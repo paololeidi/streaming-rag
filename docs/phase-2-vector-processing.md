@@ -16,15 +16,21 @@ flowchart LR
     Config -.-> Chroma
 ```
 
+
+
+
+
 ## 2.1 Vector database setup
 
 **Choice:** Embedded ChromaDB via `PersistentClient` (no extra Docker service).
 
-| Setting | Value | Rationale |
-|---------|-------|-----------|
-| `CHROMA_PERSIST_DIR` | `{project_root}/data/chroma` | Persists vectors across restarts |
-| `CHROMA_COLLECTION_NAME` | `system-logs` | Mirrors the Kafka topic for Phase 3 retrieval |
-| ID strategy | `event_id` (UUID) | Idempotent upserts on Kafka redelivery |
+
+| Setting                  | Value                        | Rationale                                     |
+| ------------------------ | ---------------------------- | --------------------------------------------- |
+| `CHROMA_PERSIST_DIR`     | `{project_root}/data/chroma` | Persists vectors across restarts              |
+| `CHROMA_COLLECTION_NAME` | `system-logs`                | Mirrors the Kafka topic for Phase 3 retrieval |
+| ID strategy              | `event_id` (UUID)            | Idempotent upserts on Kafka redelivery        |
+
 
 **File:** `src/vector_store.py`
 
@@ -50,15 +56,21 @@ Connection timeout to database for payment-gateway
 stack_trace: Traceback (most recent call last): ...
 ```
 
+
+
 ### Metadata stored in Chroma
 
-| Field | Type | Source |
-|-------|------|--------|
+
+| Field          | Type   | Source                   |
+| -------------- | ------ | ------------------------ |
 | `service_name` | string | `SystemLog.service_name` |
-| `log_level` | string | `SystemLog.log_level` |
-| `timestamp` | string | `SystemLog.timestamp` |
-| `partition` | int | Kafka message partition |
-| `offset` | int | Kafka message offset |
+| `log_level`    | string | `SystemLog.log_level`    |
+| `timestamp`    | string | `SystemLog.timestamp`    |
+| `partition`    | int    | Kafka message partition  |
+| `offset`       | int    | Kafka message offset     |
+
+
+
 
 ### Idempotency
 
@@ -66,15 +78,19 @@ stack_trace: Traceback (most recent call last): ...
 - Legacy messages without `event_id` fall back to `kafka-{partition}-{offset}`.
 - Chroma `upsert` by ID prevents duplicates on redelivery.
 
+
+
 ## 2.3 Embedding generation
 
 **Choice:** Local Hugging Face `sentence-transformers` (no API key).
 
-| Setting | Value |
-|---------|-------|
-| Model | `all-MiniLM-L6-v2` |
-| Dimensions | 384 |
-| Library | `sentence-transformers` |
+
+| Setting    | Value                   |
+| ---------- | ----------------------- |
+| Model      | `all-MiniLM-L6-v2`      |
+| Dimensions | 384                     |
+| Library    | `sentence-transformers` |
+
 
 **File:** `src/embeddings.py`
 
@@ -99,16 +115,20 @@ On embedding or DB failure, the offset is **not** committed. The message is rede
 
 Added to `requirements.txt`:
 
-| Package | Role |
-|---------|------|
-| `chromadb` | Embedded vector database |
-| `sentence-transformers` | Local embedding model |
+
+| Package                 | Role                     |
+| ----------------------- | ------------------------ |
+| `chromadb`              | Embedded vector database |
+| `sentence-transformers` | Local embedding model    |
+
 
 Install (from project root):
 
 ```bash
 pip install -r requirements.txt
 ```
+
+
 
 ## Running end-to-end
 
@@ -138,12 +158,16 @@ Ingested 8d9e0f1a-... [INFO] user-auth: Standard operation executed in 142ms
 ...
 ```
 
+
+
 ### Verify Chroma contents
 
 ```bash
 cd src
 python -c "from vector_store import get_collection; c = get_collection(); print('count:', c.count()); print(c.peek(3))"
 ```
+
+
 
 ### Query similar logs
 
@@ -157,12 +181,16 @@ print(results["documents"])
 print(results["metadatas"])
 ```
 
+
+
 ## Phase 2 checklist
 
 - [x] **2.1** ChromaDB embedded setup via `vector_store.py`
 - [x] **2.2** Per-message chunking with `chunking.py` and `to_embedding_text()`
 - [x] **2.3** Hugging Face embeddings via `embeddings.py`
 - [x] **2.4** Async consumer with commit-after-write
+
+
 
 ## What comes next (Phase 3 preview)
 

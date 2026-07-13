@@ -28,17 +28,22 @@ This project implements a Cloud-Native, Event-Driven Streaming RAG (Retrieval-Au
 
 ---
 
-## 🤖 Phase 3: Agentic RAG & API (The Intelligent Interface)
+## 🤖 Phase 3: Agentic RAG & API (The Intelligent Interface) ✅
 
 **Goal:** Build a reasoning LLM Agent capable of answering user queries by deciding when to query the streaming vector context vs. when to use other tools.
 
-- [ ] **3.1 LangSmith Observability:** Configure LangSmith for UI tracing, token monitoring, and debugging the LLM's decision-making loops.
-- [ ] **3.2 FastAPI Backend:** Set up a lightweight, asynchronous API to handle incoming user prompts.
-- [ ] **3.3 Agent Architecture (LangGraph/LangChain):** Develop a Router Agent equipped with specific "Tools".
-- [ ] **3.4 Tool Implementation:** 
-  - *Vector DB Tool:* For contextual log retrieval.
-  - *Auxiliary Tools:* e.g., math calculations or static internal documentation search.
-- [ ] **3.5 Prompt Engineering:** Design robust system prompts focusing on function calling, tool usage, and hallucination mitigation.
+- [x] **3.1 LangSmith Observability:** Configured LangSmith auto-instrumentation via environment variables (`LANGCHAIN_TRACING_V2`, `LANGCHAIN_API_KEY`). Every agent run is traced automatically — full ReAct loop, token usage, tool I/O, and latency visible in the LangSmith UI.
+- [x] **3.2 FastAPI Backend:** Async FastAPI app (`src/api/`) with a lifespan hook for embedding model warm-up, Swagger UI at `/docs`, and a `/health` liveness endpoint.
+- [x] **3.3 Agent Architecture (LangGraph):** ReAct agent built with `langgraph.prebuilt.create_react_agent` and `ChatOllama` (local model via Ollama). Singleton graph shared across requests. Model: `llama3.2:3b` (~2 GB RAM, tool-calling capable).
+- [x] **3.4 Tool Implementation:**
+  - *`vector_search`:* Embeds the query with `all-MiniLM-L6-v2` and retrieves semantically similar log entries from ChromaDB. Output truncated to 400 chars/entry to limit LLM context size.
+  - *`log_stats`:* Queries ChromaDB metadata for live count/distribution breakdowns by log level and service, filtered by a configurable time window.
+- [x] **3.5 Prompt Engineering:** SRE analyst system prompt with explicit tool-selection guidance, source citation requirements, and a hard hallucination guardrail.
+
+**Performance optimisations applied:**
+- `keep_alive=30m` on `ChatOllama` eliminates the Ollama cold-start reload penalty.
+- `POST /api/v1/query/stream` SSE endpoint streams tokens to the client as they are generated.
+- Switched from `llama3.1` (4.9 GB) to `llama3.2:3b` (2.0 GB) — ~3x faster on CPU-only hardware.
 
 ---
 
