@@ -45,14 +45,19 @@ This project implements a Cloud-Native, Event-Driven Streaming RAG (Retrieval-Au
 - `POST /api/v1/query/stream` SSE endpoint streams tokens to the client as they are generated.
 - Switched from `llama3.1` (4.9 GB) to `llama3.2:3b` (2.0 GB) — ~3x faster on CPU-only hardware.
 
+- [ ] **3.6 MCP Integration (Model Context Protocol):** Implement both sides of the MCP standard to make the system interoperable with any MCP-compatible client and extensible via external MCP servers.
+  - [ ] **3.6.1 MCP Server — expose tools:** Build `src/mcp_server/server.py` using `fastmcp`. Re-expose `vector_search` and `log_stats` as MCP tools so any external client (Claude Desktop, other agents) can query the live log context without going through the FastAPI layer.
+  - [ ] **3.6.2 Claude Desktop validation:** Connect Claude Desktop to the local MCP server via `mcp_server` config. Verify end-to-end: a natural-language question in Claude Desktop → MCP tool call → ChromaDB → grounded answer.
+  - [ ] **3.6.3 MCP Client — dynamic tool loading in the agent:** Integrate `langchain-mcp-adapters` into `graph.py` to let the LangGraph agent load tools from any running MCP server at startup, alongside the existing native tools. This makes the agent extensible without code changes.
+
 ---
 
 ## ☁️ Phase 4: Cloud-Native Deployment & LLMOps (The Infrastructure)
 
 **Goal:** Package the entire system into production-ready containers and deploy it to a Kubernetes cluster using Helm.
 
-- [ ] **4.1 Dockerization:** Write optimized, multi-stage `Dockerfile`s for the Producer, Consumer, and FastAPI backend.
-- [ ] **4.2 Unified Compose:** Create a master `docker-compose.yml` to spin up the entire stack locally (Kafka, Vector DB, App Services).
+- [ ] **4.1 Dockerization:** Write optimized, multi-stage `Dockerfile`s for the Producer, Consumer, FastAPI backend, and MCP server.
+- [ ] **4.2 Unified Compose:** Create a master `docker-compose.yml` to spin up the entire stack locally (Kafka, Vector DB, FastAPI, MCP Server).
 - [ ] **4.3 Kubernetes Manifests:** Translate the architecture into standard K8s resources (Deployments, Services, ConfigMaps, Secrets).
 - [ ] **4.4 Helm Chart Creation:** Package the manifests into a custom Helm Chart for parameterized, declarative deployments.
 - [ ] **4.5 Local K8s Deployment:** Deploy the entire stack to a local cluster (Minikube/Kind) and validate end-to-end functionality.
