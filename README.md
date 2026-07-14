@@ -1,22 +1,68 @@
 # End-to-End Streaming RAG
 
-Cloud-native, event-driven Streaming RAG for real-time log ingestion, vectorization, and intelligent incident analysis via an agentic API.
+Cloud-native, event-driven Streaming RAG for real-time log ingestion, vectorization, and intelligent incident analysis — exposed via an agentic API and an MCP server for interoperability with any AI client.
 
 ## Overview
 
-This project ingests application logs via Kafka, embeds them into a vector database (ChromaDB), and exposes an agentic FastAPI backed by a LangGraph ReAct agent for root-cause analysis and system troubleshooting.
+Diagnosing incidents in distributed systems means manually trawling through thousands of log lines across multiple services, correlating timestamps, and pattern-matching errors under pressure. This project replaces that workflow with a natural-language interface: you ask *"what caused the payment service to crash in the last hour?"* and an AI agent reasons over your live log data to give a grounded, source-cited answer.
+
+The system is built end-to-end: logs flow from a Kafka stream into a vector database in real time, and a LangGraph ReAct agent decides at query time whether to search semantically or query aggregate statistics — then synthesizes a response from real context, not from model memory. The agent is also exposed as an MCP server, making its capabilities available to any MCP-compatible client (Claude Desktop, other agents) as a first-class interoperable service.
 
 ## Project status
 
-| Phase | Status |
-|-------|--------|
-| 1 — Ingestion & Streaming | Complete |
-| 2 — Vector Processing | Complete |
-| 3 — Agentic RAG & API | Complete |
-| 3.6 — MCP Integration | Planned |
-| 4 — Cloud-Native Deployment | Planned |
+
+| Phase                       | Status   |
+| --------------------------- | -------- |
+| 1 — Ingestion & Streaming   | Complete |
+| 2 — Vector Processing       | Complete |
+| 3 — Agentic RAG & API       | Complete |
+| 3.6 — MCP Integration       | Planned  |
+| 4 — Cloud-Native Deployment | Planned  |
+
 
 See [roadmap.md](roadmap.md) for the full development plan.
+
+---
+
+## Architecture
+
+```
+ ┌──────────────────────── Data Pipeline ─────────────────────────┐
+ │                                                                │
+ │  Producer ──► Kafka ──► Consumer ──► HF Embedder ──► ChromaDB  │
+ │                                                                │
+ └────────────────────────────────────────────┬───────────────────┘
+                                              │
+ ┌──────────────────────── Agentic Layer ─────▼────────────────────┐
+ │                                                                 │
+ │  POST /api/v1/query                                             │
+ │         │                                                       │
+ │         ▼                                                       │
+ │  LangGraph ReAct Agent  (Ollama · llama3.2:3b)                  │
+ │         ├── vector_search ──► ChromaDB  (semantic search)       │
+ │         └── log_stats    ──► ChromaDB  (metadata + time filter) │
+ │                                                                 │
+ │  MCP Client ──► external MCP servers  (optional)                │
+ │                                                                 │
+ └─────────────────────────────┬───────────────────────────────────┘
+                               │
+            ┌──────────────────▼──────────────────┐
+            │             MCP Server              │
+            │  (fastmcp)                          │
+            │  ├── vector_search                  │
+            │  └── log_stats                      │
+            └──────────────────┬──────────────────┘
+                               │
+        ┌──────────────────────┼──────────────────────┐
+        ▼                      ▼                      ▼
+ Claude Desktop           Other agents           Future clients
+```
+
+**Data pipeline:** application logs are produced to Kafka, consumed in real time, embedded with HuggingFace `all-MiniLM-L6-v2`, and stored in ChromaDB for semantic retrieval.
+
+**Agentic layer:** a LangGraph ReAct agent backed by a local Ollama LLM answers natural-language questions by dynamically choosing between semantic search and statistical queries over the live log store. As an MCP client it can also load tools from external MCP servers at startup without code changes.
+
+**MCP server:** wraps `vector_search` and `log_stats` in the Model Context Protocol, turning the live log context into an interoperable service that any MCP-compatible client can discover and call — without going through the FastAPI layer.
 
 ---
 
@@ -142,58 +188,15 @@ curl http://localhost:8000/health
 
 ---
 
-## Architecture
-
-```
-                        ┌─────────────────────────────────────────┐
-                        │           Data Pipeline                 │
-                        │                                         │
-  Kafka Producer ──► Kafka ──► Consumer ──► HuggingFace Embedder ──► ChromaDB
-                                                                        │
-                        └───────────────────────────────────────────────┘
-                                                                        │
-                   ┌────────────────────────────────────────────────────┘
-                   │
-                   ▼
-        ┌─────────────────────────────────────────────────────┐
-        │                  Agentic Layer                      │
-        │                                                     │
-        │   POST /api/v1/query  ──►  LangGraph ReAct Agent    │
-        │                           ├── vector_search tool    │
-        │                           └── log_stats tool        │
-        │                                    │                │
-        │              ┌─────────────────────┘                │
-        │              │  MCP Client                          │
-        │              └──► external MCP servers (optional)   │
-        └──────────────────────────┬──────────────────────────┘
-                                   │
-                        ┌──────────▼──────────┐
-                        │     MCP Server      │
-                        │  (fastmcp)          │
-                        │  ├── vector_search  │
-                        │  └── log_stats      │
-                        └──────────┬──────────┘
-                                   │
-               ┌───────────────────┼───────────────────┐
-               ▼                   ▼                   ▼
-        Claude Desktop       Other agents        Future clients
-```
-
-**Data pipeline:** Kafka streams live logs → embedded by HuggingFace (`all-MiniLM-L6-v2`) → stored in ChromaDB for semantic retrieval.
-
-**Agentic layer:** A LangGraph ReAct agent backed by a local Ollama LLM reasons over two tools to answer natural-language questions about system health. As an MCP client it can also load tools from external MCP servers dynamically at startup.
-
-**MCP server:** Exposes `vector_search` and `log_stats` via the Model Context Protocol, making the live log context available to any MCP-compatible client — Claude Desktop, other agents, or future integrations — without going through the FastAPI layer.
-
----
-
 ## Documentation
 
-| Doc | Description |
-|-----|-------------|
-| [docs/phase-1-ingestion.md](docs/phase-1-ingestion.md) | Kafka setup, producer, consumer |
-| [docs/phase-2-vector-processing.md](docs/phase-2-vector-processing.md) | Embeddings, ChromaDB, chunking |
-| [docs/phase-3-agentic-rag.md](docs/phase-3-agentic-rag.md) | Agent, tools, API reference |
+
+| Doc                                                                    | Description                     |
+| ---------------------------------------------------------------------- | ------------------------------- |
+| [docs/phase-1-ingestion.md](docs/phase-1-ingestion.md)                 | Kafka setup, producer, consumer |
+| [docs/phase-2-vector-processing.md](docs/phase-2-vector-processing.md) | Embeddings, ChromaDB, chunking  |
+| [docs/phase-3-agentic-rag.md](docs/phase-3-agentic-rag.md)             | Agent, tools, API reference     |
+
 
 ---
 
