@@ -6,13 +6,12 @@ import re
 import sys
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, HumanMessage
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agent.graph import agent_graph
 from api.schemas import LogSource, QueryRequest, QueryResponse
 
 router = APIRouter()
@@ -41,16 +40,16 @@ def _extract_sources(tool_outputs: list[str]) -> list[LogSource]:
 
 
 @router.post("/query", response_model=QueryResponse, summary="Query the SRE analyst agent")
-async def query(request: QueryRequest) -> QueryResponse:
+async def query(request: Request, body: QueryRequest) -> QueryResponse:
     """Send a natural-language question to the ReAct agent.
 
     The agent will decide which tools to invoke (vector search and/or log
     statistics) and return a grounded answer with source citations.
     """
     try:
-        result = await agent_graph.ainvoke(
-            {"messages": [HumanMessage(content=request.prompt)]},
-            config={"configurable": {"k": request.k}},
+        result = await request.app.state.agent_graph.ainvoke(
+            {"messages": [HumanMessage(content=body.prompt)]},
+            config={"configurable": {"k": body.k}},
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -80,7 +79,7 @@ async def query(request: QueryRequest) -> QueryResponse:
 
 
 @router.post("/query/stream", summary="Stream the agent answer token by token")
-async def query_stream(request: QueryRequest) -> StreamingResponse:
+async def query_stream(request: Request, body: QueryRequest) -> StreamingResponse:
     """Stream the agent's answer as Server-Sent Events (SSE).
 
     Each frame contains one token of the LLM's output:
@@ -92,10 +91,12 @@ async def query_stream(request: QueryRequest) -> StreamingResponse:
     Useful for chat-style UIs that should display text as it is generated
     rather than waiting for the full response.
     """
+    agent_graph = request.app.state.agent_graph
+
     async def event_generator():
         try:
             async for event in agent_graph.astream_events(
-                {"messages": [HumanMessage(content=request.prompt)]},
+                {"messages": [HumanMessage(content=body.prompt)]},
                 version="v2",
             ):
                 if event["event"] == "on_chat_model_stream":

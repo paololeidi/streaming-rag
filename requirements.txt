@@ -12,3 +12,7 @@ langchain-core==1.4.9
 langchain-ollama==1.1.0
 langsmith==0.10.2
 python-dotenv==1.2.2
+
+# Phase 4 — MCP Integration
+fastmcp==2.14.7
+langchain-mcp-adapters==0.2.2

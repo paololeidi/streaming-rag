@@ -17,6 +17,8 @@ This project implements a Cloud-Native, Event-Driven Streaming RAG (Retrieval-Au
 
 ---
 
+
+
 ## 🧠 Phase 2: Vector Processing (The AI Core)
 
 **Goal:** Transform the raw, real-time log stream into spatial embeddings and persist them in a Vector Database for similarity search.
@@ -28,7 +30,9 @@ This project implements a Cloud-Native, Event-Driven Streaming RAG (Retrieval-Au
 
 ---
 
-## 🤖 Phase 3: Agentic RAG & API (The Intelligent Interface) ✅
+
+
+## 🤖 Phase 3: Agentic RAG & API (The Intelligent Interface)
 
 **Goal:** Build a reasoning LLM Agent capable of answering user queries by deciding when to query the streaming vector context vs. when to use other tools.
 
@@ -36,28 +40,38 @@ This project implements a Cloud-Native, Event-Driven Streaming RAG (Retrieval-Au
 - [x] **3.2 FastAPI Backend:** Async FastAPI app (`src/api/`) with a lifespan hook for embedding model warm-up, Swagger UI at `/docs`, and a `/health` liveness endpoint.
 - [x] **3.3 Agent Architecture (LangGraph):** ReAct agent built with `langgraph.prebuilt.create_react_agent` and `ChatOllama` (local model via Ollama). Singleton graph shared across requests. Model: `llama3.2:3b` (~2 GB RAM, tool-calling capable).
 - [x] **3.4 Tool Implementation:**
-  - *`vector_search`:* Embeds the query with `all-MiniLM-L6-v2` and retrieves semantically similar log entries from ChromaDB. Output truncated to 400 chars/entry to limit LLM context size.
-  - *`log_stats`:* Queries ChromaDB metadata for live count/distribution breakdowns by log level and service, filtered by a configurable time window.
+  - `vector_search`*:* Embeds the query with `all-MiniLM-L6-v2` and retrieves semantically similar log entries from ChromaDB. Output truncated to 400 chars/entry to limit LLM context size.
+  - `log_stats`*:* Queries ChromaDB metadata for live count/distribution breakdowns by log level and service, filtered by a configurable time window.
 - [x] **3.5 Prompt Engineering:** SRE analyst system prompt with explicit tool-selection guidance, source citation requirements, and a hard hallucination guardrail.
 
 **Performance optimisations applied:**
+
 - `keep_alive=30m` on `ChatOllama` eliminates the Ollama cold-start reload penalty.
 - `POST /api/v1/query/stream` SSE endpoint streams tokens to the client as they are generated.
 - Switched from `llama3.1` (4.9 GB) to `llama3.2:3b` (2.0 GB) — ~3x faster on CPU-only hardware.
 
-- [ ] **3.6 MCP Integration (Model Context Protocol):** Implement both sides of the MCP standard to make the system interoperable with any MCP-compatible client and extensible via external MCP servers.
-  - [ ] **3.6.1 MCP Server — expose tools:** Build `src/mcp_server/server.py` using `fastmcp`. Re-expose `vector_search` and `log_stats` as MCP tools so any external client (Claude Desktop, other agents) can query the live log context without going through the FastAPI layer.
-  - [ ] **3.6.2 Claude Desktop validation:** Connect Claude Desktop to the local MCP server via `mcp_server` config. Verify end-to-end: a natural-language question in Claude Desktop → MCP tool call → ChromaDB → grounded answer.
-  - [ ] **3.6.3 MCP Client — dynamic tool loading in the agent:** Integrate `langchain-mcp-adapters` into `graph.py` to let the LangGraph agent load tools from any running MCP server at startup, alongside the existing native tools. This makes the agent extensible without code changes.
+---
+
+
+
+## 🔌 Phase 4: MCP Integration (Interoperability Layer)
+
+**Goal:** Implement both sides of the Model Context Protocol to make the system interoperable with any MCP-compatible client and extensible via external MCP servers.
+
+- [x] **4.1 MCP Server — expose tools:** Build `src/mcp_server/server.py` using `fastmcp`. Re-expose `vector_search` and `log_stats` as MCP tools so any external client (Cursor, Claude Desktop, other agents) can query the live log context without going through the FastAPI layer.
+- [x] **4.2 Cursor validation:** Connect Cursor to the local MCP server via MCP Settings. Verify end-to-end: a natural-language question in Cursor → MCP tool call → ChromaDB → grounded answer.
+- [ ] **4.3 MCP Client — dynamic tool loading in the agent:** Integrate `langchain-mcp-adapters` into `graph.py` to let the LangGraph agent load tools from any running MCP server at startup, alongside the existing native tools. The plumbing is implemented and verified: setting `MCP_SERVER_URL` causes the agent to connect, fetch the tool list, and build the graph with those tools at startup. The full value of this pattern materialises in a future phase when the agent is pointed at an *external* MCP server (e.g. GitHub, Slack, a custom internal service) — at that point it gains new capabilities purely through configuration, with no code changes.
 
 ---
 
-## ☁️ Phase 4: Cloud-Native Deployment & LLMOps (The Infrastructure)
+
+
+## ☁️ Phase 5: Cloud-Native Deployment & LLMOps (The Infrastructure)
 
 **Goal:** Package the entire system into production-ready containers and deploy it to a Kubernetes cluster using Helm.
 
-- [ ] **4.1 Dockerization:** Write optimized, multi-stage `Dockerfile`s for the Producer, Consumer, FastAPI backend, and MCP server.
-- [ ] **4.2 Unified Compose:** Create a master `docker-compose.yml` to spin up the entire stack locally (Kafka, Vector DB, FastAPI, MCP Server).
-- [ ] **4.3 Kubernetes Manifests:** Translate the architecture into standard K8s resources (Deployments, Services, ConfigMaps, Secrets).
-- [ ] **4.4 Helm Chart Creation:** Package the manifests into a custom Helm Chart for parameterized, declarative deployments.
-- [ ] **4.5 Local K8s Deployment:** Deploy the entire stack to a local cluster (Minikube/Kind) and validate end-to-end functionality.
+- [ ] **5.1 Dockerization:** Write optimized, multi-stage `Dockerfile`s for the Producer, Consumer, FastAPI backend, and MCP server.
+- [ ] **5.2 Unified Compose:** Create a master `docker-compose.yml` to spin up the entire stack locally (Kafka, Vector DB, FastAPI, MCP Server).
+- [ ] **5.3 Kubernetes Manifests:** Translate the architecture into standard K8s resources (Deployments, Services, ConfigMaps, Secrets).
+- [ ] **5.4 Helm Chart Creation:** Package the manifests into a custom Helm Chart for parameterized, declarative deployments.
+- [ ] **5.5 Local K8s Deployment:** Deploy the entire stack to a local cluster (Minikube/Kind) and validate end-to-end functionality.

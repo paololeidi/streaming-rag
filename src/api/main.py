@@ -16,18 +16,46 @@ from fastapi import FastAPI
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from agent.graph import build_agent_graph
 from api.routes import router
+from config import MCP_SERVER_URL
 from embeddings import HuggingFaceEmbedder
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Warm up the embedding model at startup so the first request is not slow."""
+    """Initialise shared resources at startup and release them on shutdown.
+
+    Startup steps:
+    1. Warm up the embedding model so the first request is not slow.
+    2. If MCP_SERVER_URL is set, connect to the MCP server, load its tools,
+       and include them alongside the native tools in the agent graph.
+    3. Build the compiled LangGraph agent and store it in app.state so all
+       request handlers share a single instance without rebuilding on each call.
+    """
     print("Loading embedding model...")
     embedder = HuggingFaceEmbedder()
     embedder.embed("warmup")
     print("Embedding model ready.")
+
+    if MCP_SERVER_URL:
+        from langchain_mcp_adapters.client import MultiServerMCPClient
+
+        print(f"Connecting to MCP server at {MCP_SERVER_URL} ...")
+        client = MultiServerMCPClient(
+            {"log-analysis": {"url": MCP_SERVER_URL, "transport": "sse"}}
+        )
+        extra_tools = await client.get_tools()
+        print(f"Loaded {len(extra_tools)} tool(s) from MCP server.")
+        app.state.mcp_client = client  # keep reference alive for the duration of the app
+        app.state.agent_graph = await build_agent_graph(extra_tools)
+        print("Agent ready (native + MCP tools).")
+    else:
+        app.state.agent_graph = await build_agent_graph()
+        print("Agent ready (native tools only).")
+
     yield
+
     print("API shutting down.")
 
 
@@ -38,7 +66,7 @@ app = FastAPI(
         "Send a natural-language question about your system logs and receive a "
         "grounded answer with source citations from the live vector store."
     ),
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
