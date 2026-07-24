@@ -8,16 +8,22 @@ load_dotenv()
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # --- Kafka ---
-KAFKA_BOOTSTRAP_SERVERS = "localhost:9092"
-KAFKA_TOPIC_SYSTEM_LOGS = "system-logs"
-KAFKA_CONSUMER_GROUP = "rag-ingestion-group"
+KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
+KAFKA_TOPIC_SYSTEM_LOGS = os.getenv("KAFKA_TOPIC_SYSTEM_LOGS", "system-logs")
+KAFKA_CONSUMER_GROUP = os.getenv("KAFKA_CONSUMER_GROUP", "rag-ingestion-group")
 
 # --- ChromaDB ---
-CHROMA_PERSIST_DIR = str(PROJECT_ROOT / "data" / "chroma")
-CHROMA_COLLECTION_NAME = "system-logs"
+# When CHROMA_HOST is set, vector_store uses HttpClient (Compose / server mode).
+# When unset, it uses PersistentClient at CHROMA_PERSIST_DIR (local non-Docker).
+CHROMA_HOST = os.getenv("CHROMA_HOST", "")
+CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
+CHROMA_PERSIST_DIR = os.getenv(
+    "CHROMA_PERSIST_DIR", str(PROJECT_ROOT / "data" / "chroma")
+)
+CHROMA_COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME", "system-logs")
 
 # --- Embeddings ---
-EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+EMBEDDING_MODEL_NAME = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
 
 # --- Ollama / LLM ---
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:3b")

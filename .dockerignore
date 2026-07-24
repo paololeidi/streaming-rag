@@ -1,0 +1,14 @@
+.venv/
+**/venv/
+.git/
+.gitignore
+data/
+__pycache__/
+*.pyc
+.env
+*.env
+*.md
+docs/
+.cursor/
+agent-transcripts/
+infrastructure/kafka/

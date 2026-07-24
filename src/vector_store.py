@@ -1,7 +1,12 @@
 import chromadb
 from chromadb import Collection
 
-from config import CHROMA_COLLECTION_NAME, CHROMA_PERSIST_DIR
+from config import (
+    CHROMA_COLLECTION_NAME,
+    CHROMA_HOST,
+    CHROMA_PERSIST_DIR,
+    CHROMA_PORT,
+)
 
 _client: chromadb.ClientAPI | None = None
 _collection: Collection | None = None
@@ -10,7 +15,10 @@ _collection: Collection | None = None
 def _get_client() -> chromadb.ClientAPI:
     global _client
     if _client is None:
-        _client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
+        if CHROMA_HOST:
+            _client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
+        else:
+            _client = chromadb.PersistentClient(path=CHROMA_PERSIST_DIR)
     return _client
 
 

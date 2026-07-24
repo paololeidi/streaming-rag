@@ -22,7 +22,9 @@ flowchart LR
 
 ## 2.1 Vector database setup
 
-**Choice:** Embedded ChromaDB via `PersistentClient` (no extra Docker service).
+**Choice (Phase 2):** Embedded ChromaDB via `PersistentClient` (no extra Docker service).
+
+**Phase 5 update:** When `CHROMA_HOST` is set (Compose), `vector_store` uses `HttpClient` against a Chroma server; when unset, embedded mode remains the default for local non-Docker runs. See [phase-5-cloud-native.md](phase-5-cloud-native.md).
 
 
 | Setting                  | Value                        | Rationale                                     |
@@ -82,7 +84,7 @@ stack_trace: Traceback (most recent call last): ...
 
 ## 2.3 Embedding generation
 
-**Choice:** Local Hugging Face `sentence-transformers` (no API key).
+**Choice:** Local Hugging Face model via `sentence-transformers` (no API key, no remote embedding service).
 
 
 | Setting    | Value                   |
@@ -90,11 +92,25 @@ stack_trace: Traceback (most recent call last): ...
 | Model      | `all-MiniLM-L6-v2`      |
 | Dimensions | 384                     |
 | Library    | `sentence-transformers` |
+| Config     | `EMBEDDING_MODEL_NAME` in `config.py` |
 
 
-**File:** `src/embeddings.py`
+**File:** `src/embeddings.py` — class `HuggingFaceEmbedder`
 
-The model is lazy-loaded on the first `embed()` call. The first run downloads ~80MB; subsequent runs use the Hugging Face cache.
+The name reflects the **model source** (a Hugging Face–hosted checkpoint), not a Hugging Face cloud API. The wrapper loads that checkpoint with `SentenceTransformer` and turns log text into fixed-length vectors Chroma can index and search.
+
+### How it works
+
+1. **Construct** — `HuggingFaceEmbedder()` stores the model name (`all-MiniLM-L6-v2` by default) but does **not** load weights yet.
+2. **Lazy load** — the first call to `embed()` / `embed_batch()` creates a `SentenceTransformer` instance. That downloads ~80 MB on the first run (cached under the Hugging Face cache for later runs), then keeps the model in memory for the process lifetime.
+3. **Encode** — `embed(text)` runs the model’s `encode()` on the chunk text from `to_embedding_text()` and returns a `list[float]` of length **384**. `embed_batch(texts)` does the same for many strings in one pass.
+4. **Store / query** — the consumer upserts that vector into Chroma with the chunk’s metadata and document text. At query time, Phase 3/4 use the **same** embedder so the search query lands in the same vector space as the ingested logs.
+
+```
+log chunk text  →  HuggingFaceEmbedder.embed()  →  [384 floats]  →  ChromaDB upsert / query
+```
+
+Because encoding is CPU/GPU-bound and blocking, the async consumer runs `embedder.embed(...)` inside `asyncio.to_thread(...)` so the event loop stays free while Kafka polling continues.
 
 ## 2.4 Asynchronous ingestion
 

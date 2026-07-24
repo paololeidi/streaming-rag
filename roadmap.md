@@ -68,10 +68,12 @@ This project implements a Cloud-Native, Event-Driven Streaming RAG (Retrieval-Au
 
 ## ☁️ Phase 5: Cloud-Native Deployment & LLMOps (The Infrastructure)
 
-**Goal:** Package the entire system into production-ready containers and deploy it to a Kubernetes cluster using Helm.
+**Goal:** Package the entire system into production-ready containers so a tester can bring up the full stack with a single Compose command — no local Python venv, manual Kafka compose, or hand-seeded producer/consumer — then deploy the same architecture to Kubernetes via Helm.
 
-- [ ] **5.1 Dockerization:** Write optimized, multi-stage `Dockerfile`s for the Producer, Consumer, FastAPI backend, and MCP server.
-- [ ] **5.2 Unified Compose:** Create a master `docker-compose.yml` to spin up the entire stack locally (Kafka, Vector DB, FastAPI, MCP Server).
-- [ ] **5.3 Kubernetes Manifests:** Translate the architecture into standard K8s resources (Deployments, Services, ConfigMaps, Secrets).
-- [ ] **5.4 Helm Chart Creation:** Package the manifests into a custom Helm Chart for parameterized, declarative deployments.
+**Strategy:** Keep app images lean (producer, consumer, FastAPI, MCP server only). Run Ollama as a **peer Compose/K8s service** (official `ollama/ollama` image + persistent volume for models), not baked into the app Dockerfiles. Apps reach it over the Docker/K8s network via `OLLAMA_BASE_URL`.
+
+- [x] **5.1 Dockerization:** Write optimized, multi-stage `Dockerfile`s for the Producer, Consumer, FastAPI backend, and MCP server (application code only — no LLM runtime in these images).
+- [x] **5.2 Unified Compose:** Create a master `docker-compose.yml` that starts the full local stack: Kafka, Vector DB, Ollama (with model pull/init and a volume for persisted models), Producer, Consumer, FastAPI, and MCP Server. Wire `OLLAMA_BASE_URL=http://ollama:11434` (or equivalent) so the agent talks to the Ollama service on the Compose network. Target UX: `docker compose up` replaces the multi-step Quick start for local testing.
+- [ ] **5.3 Kubernetes Manifests:** Translate the architecture into standard K8s resources (Deployments, Services, ConfigMaps, Secrets), including an Ollama Deployment/Service and a PVC for model storage.
+- [ ] **5.4 Helm Chart Creation:** Package the manifests into a custom Helm Chart for parameterized, declarative deployments (model name, resource limits, optional GPU, etc.).
 - [ ] **5.5 Local K8s Deployment:** Deploy the entire stack to a local cluster (Minikube/Kind) and validate end-to-end functionality.

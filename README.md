@@ -11,13 +11,13 @@ The system is built end-to-end: logs flow from a Kafka stream into a vector data
 ## Project status
 
 
-| Phase                       | Status   |
-| --------------------------- | -------- |
-| 1 — Ingestion & Streaming   | Complete |
-| 2 — Vector Processing       | Complete |
-| 3 — Agentic RAG & API       | Complete |
-| 4 — MCP Integration         | Complete |
-| 5 — Cloud-Native Deployment | Planned  |
+| Phase                       | Status                                    |
+| --------------------------- | ----------------------------------------- |
+| 1 — Ingestion & Streaming   | Complete                                  |
+| 2 — Vector Processing       | Complete                                  |
+| 3 — Agentic RAG & API       | Complete                                  |
+| 4 — MCP Integration         | Complete                                  |
+| 5 — Cloud-Native Deployment | In progress (Compose done; K8s/Helm next) |
 
 
 See [roadmap.md](roadmap.md) for the full development plan.
@@ -53,7 +53,7 @@ See [roadmap.md](roadmap.md) for the full development plan.
             │  ├── vector_search                  │
             │  └── log_stats                      │
             └──────────────────┬──────────────────┘
-                               │  stdio
+                               │  stdio / SSE
         ┌──────────────────────┼──────────────────────┐
         ▼                      ▼                      ▼
    Cursor IDE            Claude Desktop          Other agents
@@ -69,85 +69,66 @@ See [roadmap.md](roadmap.md) for the full development plan.
 
 
 
-## Quick start
+## Requirements
 
-> **Shell:** all commands below use **Git Bash** (forward-slash paths). If you are using PowerShell, replace `/` with `\` and `cp` with `Copy-Item`.
-
-
-
-### 1. Infrastructure
-
-```bash
-# Start Kafka
-docker compose -f infrastructure/kafka/docker-compose.yml up -d
-```
+**Compose quick start** (recommended):
 
 
-
-### 2. Python environment
-
-```bash
-python -m venv .venv
-source .venv/Scripts/activate
-pip install -r requirements.txt
-```
+| Tool                                                              | Purpose                         | Notes                                                                    |
+| ----------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------ |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Runs the full stack via Compose | Allocate **~8 GB+ RAM** to Docker (Ollama + embeddings + Kafka + Chroma) |
 
 
+**Local (non-Docker) development** additionally needs:
 
-### 3. Configuration
+
+| Tool                                              | Purpose                               |
+| ------------------------------------------------- | ------------------------------------- |
+| [Python 3.11+](https://www.python.org/downloads/) | Producer, consumer, API, MCP          |
+| [Ollama](https://ollama.com/download)             | Local LLM (Compose runs this for you) |
+
+
+Optional: **LangSmith API key** — omit `LANGCHAIN_API_KEY` in `.env` to disable tracing.
+
+---
+
+
+
+## Quick start (Docker Compose)
+
+Bring up Kafka, Chroma, Ollama, producer, consumer, API, and MCP with one command. No local Python venv, host Ollama install, or manual seeding required.
+
+> **Working directory:** project root (`AI-project/`).
+
+
+
+### 1. Configuration (optional)
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and set your values:
+Edit `.env` only if you want LangSmith tracing or a different `OLLAMA_MODEL`. Compose wires Kafka, Chroma, and Ollama URLs for you.
 
-```env
-LANGCHAIN_TRACING_V2=true
-LANGCHAIN_API_KEY=<your_langsmith_key>   # optional — omit to disable tracing
-LANGCHAIN_PROJECT=ai-project
-
-OLLAMA_MODEL=llama3.2:3b   # must support tool/function calling
-OLLAMA_KEEP_ALIVE=30m      # keep model in RAM between requests
-OLLAMA_BASE_URL=http://localhost:11434
-```
-
-
-
-### 4. Ollama
-
-Install Ollama from [ollama.com/download](https://ollama.com/download/windows), then pull the recommended model:
+### 2. Start the stack
 
 ```bash
-ollama pull llama3.2:3b
+docker compose up --build
 ```
 
-`llama3.2:3b` uses ~2 GB of RAM and fully supports tool/function calling. For an even lighter option use `qwen2.5:3b` (also ~2 GB).
+First run builds the app image (includes the embedding model) and pulls `llama3.2:3b` into the Ollama volume — that can take several minutes. Later starts reuse cached images and the `ollama_data` volume.
 
-Ollama runs as a background service automatically after installation.
-
-### 5. Seed the vector store
-
-Run the producer and consumer to ingest logs into ChromaDB:
-
-```bash
-# terminal 1
-.venv/Scripts/python src/producer.py
-
-# terminal 2
-.venv/Scripts/python src/consumer.py
-# let it run for ~30 seconds, then Ctrl+C both
-```
+When ready:
 
 
+| Service       | URL                                                          |
+| ------------- | ------------------------------------------------------------ |
+| API + Swagger | [http://localhost:8000/docs](http://localhost:8000/docs)     |
+| Health        | [http://localhost:8000/health](http://localhost:8000/health) |
+| MCP (SSE)     | [http://localhost:8001/sse](http://localhost:8001/sse)       |
 
-### 6. Start the API
 
-```bash
-.venv/Scripts/uvicorn api.main:app --reload --app-dir src
-```
-
-The API is now live at `http://localhost:8000`.
+Stop with `Ctrl+C`, or run detached: `docker compose up --build -d`.
 
 ---
 
@@ -162,8 +143,6 @@ The API is now live at `http://localhost:8000`.
 Open [http://localhost:8000/docs](http://localhost:8000/docs) for the Swagger UI.
 
 ### `POST /api/v1/query`
-
-Send a natural-language question about your system logs:
 
 ```bash
 curl -s -X POST http://localhost:8000/api/v1/query \
@@ -213,9 +192,31 @@ curl http://localhost:8000/health
 
 
 
-### 7. Connect the MCP server to Cursor
+### Compose stack (SSE)
 
-Open **Cursor Settings → MCP** and add the following server entry:
+With `docker compose up`, the MCP server listens on SSE. In **Cursor Settings → MCP**:
+
+```json
+{
+  "mcpServers": {
+    "log-analysis": {
+      "url": "http://localhost:8001/sse"
+    }
+  }
+}
+```
+
+Validate in the Cursor agent panel:
+
+1. **"What tools do you have available?"** — confirm `vector_search` and `log_stats`.
+2. **"How many errors were logged in the last hour?"** — calls `log_stats`.
+3. **"Find logs related to database connection failures"** — calls `vector_search`.
+
+
+
+### Local stdio (non-Docker)
+
+If you run the MCP server on the host instead of Compose, use absolute paths:
 
 ```json
 {
@@ -229,17 +230,58 @@ Open **Cursor Settings → MCP** and add the following server entry:
 }
 ```
 
-> Both `command` and the script path in `args` must be absolute paths. On Windows, using a relative script path causes Cursor to resolve it against its own working directory rather than the project root.
+---
 
-Cursor spawns the MCP server automatically (stdio transport). You should see `log-analysis` appear as a connected server with a green indicator.
 
-### 8. Validate the MCP integration
 
-In the Cursor agent panel, run these three checks:
+## Local (non-Docker) development
 
-1. **"What tools do you have available?"** — confirm `vector_search` and `log_stats` are listed.
-2. **"How many errors were logged in the last hour?"** — agent calls `log_stats`, returns a live count broken down by service.
-3. **"Find logs related to database connection failures"** — agent calls `vector_search`, returns semantically matched log entries with service names and timestamps.
+Use this path when iterating on Python code without rebuilding images. Commands below use **Git Bash** (forward-slash paths).
+
+### 1. Kafka only
+
+```bash
+docker compose -f infrastructure/kafka/docker-compose.yml up -d
+```
+
+For Chroma in server mode locally, also run a Chroma container (or leave `CHROMA_HOST` unset to use embedded `data/chroma/`).
+
+### 2. Python environment
+
+```bash
+python -m venv .venv
+source .venv/Scripts/activate
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+
+
+### 3. Ollama on the host
+
+```bash
+ollama pull llama3.2:3b
+```
+
+
+
+### 4. Producer + consumer
+
+```bash
+# terminal 1
+.venv/Scripts/python src/producer.py
+
+# terminal 2
+.venv/Scripts/python src/consumer.py
+```
+
+
+
+### 5. API
+
+```bash
+.venv/Scripts/uvicorn api.main:app --reload --app-dir src
+```
 
 ---
 
@@ -248,12 +290,13 @@ In the Cursor agent panel, run these three checks:
 ## Documentation
 
 
-| Doc                                                                    | Description                          |
-| ---------------------------------------------------------------------- | ------------------------------------ |
-| [docs/phase-1-ingestion.md](docs/phase-1-ingestion.md)                 | Kafka setup, producer, consumer      |
-| [docs/phase-2-vector-processing.md](docs/phase-2-vector-processing.md) | Embeddings, ChromaDB, chunking       |
-| [docs/phase-3-agentic-rag.md](docs/phase-3-agentic-rag.md)             | Agent, tools, API reference          |
-| [docs/phase-4-mcp-integration.md](docs/phase-4-mcp-integration.md)     | MCP server, MCP client, Cursor setup |
+| Doc                                                                    | Description                                   |
+| ---------------------------------------------------------------------- | --------------------------------------------- |
+| [docs/phase-1-ingestion.md](docs/phase-1-ingestion.md)                 | Kafka setup, producer, consumer               |
+| [docs/phase-2-vector-processing.md](docs/phase-2-vector-processing.md) | Embeddings, vector database, chunking         |
+| [docs/phase-3-agentic-rag.md](docs/phase-3-agentic-rag.md)             | Agentic RAG, tools, API reference             |
+| [docs/phase-4-mcp-integration.md](docs/phase-4-mcp-integration.md)     | MCP server, MCP client, Cursor setup          |
+| [docs/phase-5-cloud-native.md](docs/phase-5-cloud-native.md)           | Docker image, Compose stack, Chroma dual mode |
 
 
 ---

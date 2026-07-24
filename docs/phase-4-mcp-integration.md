@@ -20,8 +20,6 @@ Before MCP, every AI application reinvented its own plugin or tool-calling forma
 
 ---
 
-
-
 ## Architecture
 
 ```
@@ -51,11 +49,7 @@ Before MCP, every AI application reinvented its own plugin or tool-calling forma
 
 ---
 
-
-
 ## Architectural decisions and motivations
-
-
 
 ### Why `fastmcp` over the raw MCP SDK
 
@@ -95,8 +89,6 @@ Lazy initialisation via a `_get_embedder()` helper solves this cleanly: the serv
 
 ---
 
-
-
 ## New and modified files
 
 
@@ -114,11 +106,7 @@ Lazy initialisation via a `_get_embedder()` helper solves this cleanly: the serv
 
 ---
 
-
-
 ## Running the MCP server
-
-
 
 ### stdio mode (for Cursor and other desktop clients)
 
@@ -139,11 +127,7 @@ The port is controlled by `MCP_SERVER_PORT` in `.env` (default `8001`).
 
 ---
 
-
-
 ## Tool reference
-
-
 
 ### `vector_search`
 
@@ -175,8 +159,6 @@ Semantic similarity search over the ChromaDB log store.
 ```
 
 ---
-
-
 
 ### `log_stats`
 
@@ -212,11 +194,7 @@ Log statistics for the last 30 minute(s):
 
 ---
 
-
-
 ## Cursor validation
-
-
 
 ### 1. Configure Cursor
 
@@ -247,8 +225,6 @@ In the Cursor agent panel, confirm the following:
 - [x] "Find logs related to database connection failures" → agent calls `vector_search`, returns semantically matched entries with service names and timestamps.
 
 ---
-
-
 
 ## MCP client configuration (LangGraph agent)
 
