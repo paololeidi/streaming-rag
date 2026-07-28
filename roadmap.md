@@ -74,6 +74,6 @@ This project implements a Cloud-Native, Event-Driven Streaming RAG (Retrieval-Au
 
 - [x] **5.1 Dockerization:** Write optimized, multi-stage `Dockerfile`s for the Producer, Consumer, FastAPI backend, and MCP server (application code only — no LLM runtime in these images).
 - [x] **5.2 Unified Compose:** Create a master `docker-compose.yml` that starts the full local stack: Kafka, Vector DB, Ollama (with model pull/init and a volume for persisted models), Producer, Consumer, FastAPI, and MCP Server. Wire `OLLAMA_BASE_URL=http://ollama:11434` (or equivalent) so the agent talks to the Ollama service on the Compose network. Target UX: `docker compose up` replaces the multi-step Quick start for local testing.
-- [ ] **5.3 Kubernetes Manifests:** Translate the architecture into standard K8s resources (Deployments, Services, ConfigMaps, Secrets), including an Ollama Deployment/Service and a PVC for model storage.
-- [ ] **5.4 Helm Chart Creation:** Package the manifests into a custom Helm Chart for parameterized, declarative deployments (model name, resource limits, optional GPU, etc.).
-- [ ] **5.5 Local K8s Deployment:** Deploy the entire stack to a local cluster (Minikube/Kind) and validate end-to-end functionality.
+- [x] **5.3 Kubernetes Manifests:** Translate the architecture into standard K8s resources (Deployments, Services, ConfigMaps, Secrets), including an Ollama Deployment/Service and a PVC for model storage.
+- [x] **5.4 Helm Chart Creation:** Package the manifests into a custom Helm Chart for parameterized, declarative deployments (model name, resource limits, optional GPU, etc.).
+- [x] **5.5 Local K8s Deployment:** Deploy the entire stack to a local cluster (Minikube/Kind) and validate end-to-end functionality.

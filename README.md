@@ -17,7 +17,7 @@ The system is built end-to-end: logs flow from a Kafka stream into a vector data
 | 2 — Vector Processing       | Complete                                  |
 | 3 — Agentic RAG & API       | Complete                                  |
 | 4 — MCP Integration         | Complete                                  |
-| 5 — Cloud-Native Deployment | In progress (Compose done; K8s/Helm next) |
+| 5 — Cloud-Native Deployment | Complete (Compose + Helm/Kind) |
 
 
 See [roadmap.md](roadmap.md) for the full development plan.
@@ -76,7 +76,7 @@ See [roadmap.md](roadmap.md) for the full development plan.
 
 | Tool                                                              | Purpose                         | Notes                                                                    |
 | ----------------------------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------ |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Runs the full stack via Compose | Allocate **~8 GB+ RAM** to Docker (Ollama + embeddings + Kafka + Chroma) |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | Runs the full stack via Compose | Prefer **~8 GB+** Docker memory for the *full* stack; on tighter machines use a partial stack or local Python (below) |
 
 
 **Local (non-Docker) development** additionally needs:
@@ -129,6 +129,33 @@ When ready:
 
 
 Stop with `Ctrl+C`, or run detached: `docker compose up --build -d`.
+
+---
+
+
+
+## Quick start (Kubernetes / Kind)
+
+Same stack via Helm on Kind (intended for a work laptop with Kind installed; prefer ~16 GB+ RAM). Details: [`charts/streaming-rag/README.md`](charts/streaming-rag/README.md).
+
+```bash
+# From project root (Git Bash / WSL / macOS/Linux)
+./scripts/kind-deploy.sh
+# or manually:
+#   kind create cluster --name streaming-rag
+#   docker build -t streaming-rag:local .
+#   kind load docker-image streaming-rag:local --name streaming-rag
+#   helm upgrade --install streaming-rag ./charts/streaming-rag -n streaming-rag --create-namespace
+```
+
+Then:
+
+```bash
+kubectl port-forward -n streaming-rag svc/api 8000:8000
+curl http://localhost:8000/health
+```
+
+MCP: `kubectl port-forward -n streaming-rag svc/mcp 8001:8001` → Cursor URL `http://localhost:8001/sse`.
 
 ---
 
@@ -296,7 +323,8 @@ ollama pull llama3.2:3b
 | [docs/phase-2-vector-processing.md](docs/phase-2-vector-processing.md) | Embeddings, vector database, chunking         |
 | [docs/phase-3-agentic-rag.md](docs/phase-3-agentic-rag.md)             | Agentic RAG, tools, API reference             |
 | [docs/phase-4-mcp-integration.md](docs/phase-4-mcp-integration.md)     | MCP server, MCP client, Cursor setup          |
-| [docs/phase-5-cloud-native.md](docs/phase-5-cloud-native.md)           | Docker image, Compose stack, Chroma dual mode |
+| [docs/phase-5-cloud-native.md](docs/phase-5-cloud-native.md)           | Compose, Helm chart, Kind deploy             |
+| [charts/streaming-rag/README.md](charts/streaming-rag/README.md)       | Helm values, Kind build/load/install         |
 
 
 ---

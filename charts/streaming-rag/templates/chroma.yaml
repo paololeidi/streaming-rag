@@ -1,0 +1,83 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: chroma-data
+  labels:
+    {{- include "streaming-rag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chroma
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.chroma.persistence.size }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chroma
+  labels:
+    {{- include "streaming-rag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chroma
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: chroma
+      {{- include "streaming-rag.selectorLabels" . | nindent 6 }}
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/component: chroma
+        {{- include "streaming-rag.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: chroma
+          image: {{ .Values.chroma.image }}
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: IS_PERSISTENT
+              value: "TRUE"
+            - name: ANONYMIZED_TELEMETRY
+              value: "FALSE"
+          volumeMounts:
+            - name: data
+              mountPath: /chroma/chroma
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 12
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.chroma.resources | nindent 12 }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: chroma-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chroma
+  labels:
+    {{- include "streaming-rag.labels" . | nindent 4 }}
+    app.kubernetes.io/component: chroma
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/component: chroma
+    {{- include "streaming-rag.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http

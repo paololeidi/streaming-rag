@@ -1,0 +1,97 @@
+# Default values for streaming-rag (Kind / laptop-friendly).
+# Full stack (Kind + Ollama + Kafka + embeddings) wants ~16 GB+ host RAM.
+
+nameOverride: ""
+fullnameOverride: ""
+
+image:
+  repository: streaming-rag
+  tag: local
+  pullPolicy: IfNotPresent
+
+kafka:
+  image: confluentinc/cp-kafka:7.5.0
+  clusterId: MkU3OEVBNTcwNTJENDM2Qk
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+chroma:
+  image: chromadb/chroma:0.6.3
+  persistence:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+ollama:
+  image: ollama/ollama:latest
+  model: llama3.2:3b
+  keepAlive: 30m
+  persistence:
+    size: 10Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 2Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+
+producer:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+consumer:
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+api:
+  serviceType: ClusterIP
+  nodePort: null
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+mcp:
+  serviceType: ClusterIP
+  nodePort: null
+  port: 8001
+  resources:
+    requests:
+      cpu: 100m
+      memory: 512Mi
+    limits:
+      cpu: 500m
+      memory: 2Gi
+
+langsmith:
+  enabled: false
+  tracing: "true"
+  project: ai-project
+  # Set via --set-string langsmith.apiKey=... or existing Secret
+  apiKey: ""
+  existingSecret: ""
+  existingSecretKey: LANGCHAIN_API_KEY

@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: streaming-rag-config
+  labels:
+    {{- include "streaming-rag.labels" . | nindent 4 }}
+data:
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+  CHROMA_HOST: "chroma"
+  CHROMA_PORT: "8000"
+  OLLAMA_BASE_URL: "http://ollama:11434"
+  OLLAMA_MODEL: {{ .Values.ollama.model | quote }}
+  OLLAMA_KEEP_ALIVE: {{ .Values.ollama.keepAlive | quote }}
+  MCP_SERVER_PORT: {{ .Values.mcp.port | quote }}
+  LANGCHAIN_PROJECT: {{ .Values.langsmith.project | quote }}
+  {{- if .Values.langsmith.enabled }}
+  LANGCHAIN_TRACING_V2: {{ .Values.langsmith.tracing | quote }}
+  {{- else }}
+  LANGCHAIN_TRACING_V2: "false"
+  {{- end }}
