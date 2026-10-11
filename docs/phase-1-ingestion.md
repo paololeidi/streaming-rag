@@ -67,7 +67,7 @@ Log levels are weighted: `INFO` appears twice in the pool vs `WARN` and `ERROR` 
 ### Partition key
 
 ```python
-key=log_entry.service_name.encode("utf-8")
+key = log_entry.service_name.encode("utf-8")
 ```
 
 **Why `service_name` as the key?** Kafka maps keys to partitions with `hash(key) % num_partitions`. All logs from the same service land on the same partition, preserving per-service ordering. This matters for incident correlation in later RAG phases.

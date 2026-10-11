@@ -17,9 +17,9 @@ from langgraph.prebuilt import create_react_agent
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config import OLLAMA_BASE_URL, OLLAMA_KEEP_ALIVE, OLLAMA_MODEL
 from agent.prompts import SYSTEM_PROMPT
 from agent.tools import log_stats, vector_search
+from config import OLLAMA_BASE_URL, OLLAMA_KEEP_ALIVE, OLLAMA_MODEL
 
 llm = ChatOllama(
     model=OLLAMA_MODEL,

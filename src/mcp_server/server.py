@@ -13,7 +13,6 @@ from __future__ import annotations
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
 
 from fastmcp import FastMCP
 
@@ -62,7 +61,7 @@ def vector_search(query: str, k: int = 5) -> str:
         return "No similar log entries found in the vector store."
 
     lines: list[str] = []
-    for i, (doc, meta) in enumerate(zip(documents, metadatas), start=1):
+    for i, (doc, meta) in enumerate(zip(documents, metadatas, strict=False), start=1):
         service = meta.get("service_name", "unknown")
         level = meta.get("log_level", "?")
         ts = meta.get("timestamp", "?")
@@ -74,8 +73,8 @@ def vector_search(query: str, k: int = 5) -> str:
 
 @mcp.tool()
 def log_stats(
-    log_level: Optional[str] = None,
-    service_name: Optional[str] = None,
+    log_level: str | None = None,
+    service_name: str | None = None,
     minutes: int = 60,
 ) -> str:
     """Return live counts and distributions of log entries stored in ChromaDB.
@@ -144,12 +143,9 @@ def log_stats(
         level_counts[lvl] = level_counts.get(lvl, 0) + 1
         service_counts[svc] = service_counts.get(svc, 0) + 1
 
-    level_breakdown = ", ".join(
-        f"{lvl}: {cnt}" for lvl, cnt in sorted(level_counts.items())
-    )
+    level_breakdown = ", ".join(f"{lvl}: {cnt}" for lvl, cnt in sorted(level_counts.items()))
     service_breakdown = "\n".join(
-        f"  {svc}: {cnt}"
-        for svc, cnt in sorted(service_counts.items(), key=lambda x: -x[1])
+        f"  {svc}: {cnt}" for svc, cnt in sorted(service_counts.items(), key=lambda x: -x[1])
     )
 
     return (

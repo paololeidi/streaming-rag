@@ -7,9 +7,9 @@ Run with:
 from __future__ import annotations
 
 import sys
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import AsyncIterator
 
 import uvicorn
 from fastapi import FastAPI
@@ -39,17 +39,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     print("Embedding model ready.")
 
     if MCP_SERVER_URL:
-        from langchain_mcp_adapters.client import MultiServerMCPClient
+        try:
+            from langchain_mcp_adapters.client import MultiServerMCPClient
 
-        print(f"Connecting to MCP server at {MCP_SERVER_URL} ...")
-        client = MultiServerMCPClient(
-            {"log-analysis": {"url": MCP_SERVER_URL, "transport": "sse"}}
-        )
-        extra_tools = await client.get_tools()
-        print(f"Loaded {len(extra_tools)} tool(s) from MCP server.")
-        app.state.mcp_client = client  # keep reference alive for the duration of the app
-        app.state.agent_graph = await build_agent_graph(extra_tools)
-        print("Agent ready (native + MCP tools).")
+            print(f"Connecting to MCP server at {MCP_SERVER_URL} ...")
+            client = MultiServerMCPClient(
+                {"log-analysis": {"url": MCP_SERVER_URL, "transport": "sse"}}
+            )
+            extra_tools = await client.get_tools()
+            print(f"Loaded {len(extra_tools)} tool(s) from MCP server.")
+            app.state.mcp_client = client  # keep reference alive for the duration of the app
+            app.state.agent_graph = await build_agent_graph(extra_tools)
+            print("Agent ready (native + MCP tools).")
+        except Exception as exc:
+            print(
+                f"Warning: Failed to connect to MCP server at {MCP_SERVER_URL}: {exc}. "
+                "Falling back to native tools only."
+            )
+            app.state.agent_graph = await build_agent_graph()
+            print("Agent ready (native tools only).")
     else:
         app.state.agent_graph = await build_agent_graph()
         print("Agent ready (native tools only).")

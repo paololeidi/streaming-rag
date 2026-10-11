@@ -1,11 +1,11 @@
 from datetime import datetime, timezone
-from enum import Enum
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
-class LogLevel(str, Enum):
+class LogLevel(StrEnum):
     INFO = "INFO"
     WARN = "WARN"
     ERROR = "ERROR"

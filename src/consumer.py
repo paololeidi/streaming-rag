@@ -54,13 +54,18 @@ async def run_consumer() -> None:
             if msg is None:
                 await asyncio.sleep(0)
                 continue
-            if msg.error():
-                if msg.error().code() == KafkaError._PARTITION_EOF:
+            err = msg.error()
+            if err:
+                if err.code() == KafkaError._PARTITION_EOF:
                     continue
-                raise KafkaException(msg.error())
+                raise KafkaException(err)
+
+            raw_value = msg.value()
+            if raw_value is None:
+                continue
 
             try:
-                log_entry = SystemLog.from_kafka_payload(msg.value())
+                log_entry = SystemLog.from_kafka_payload(raw_value)
             except ValidationError as exc:
                 print(
                     f"Skipping invalid message at offset {msg.offset()} "

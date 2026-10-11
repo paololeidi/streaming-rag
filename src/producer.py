@@ -1,5 +1,5 @@
-import time
 import random
+import time
 from uuid import uuid4
 
 from confluent_kafka import Producer

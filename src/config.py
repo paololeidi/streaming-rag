@@ -17,9 +17,7 @@ KAFKA_CONSUMER_GROUP = os.getenv("KAFKA_CONSUMER_GROUP", "rag-ingestion-group")
 # When unset, it uses PersistentClient at CHROMA_PERSIST_DIR (local non-Docker).
 CHROMA_HOST = os.getenv("CHROMA_HOST", "")
 CHROMA_PORT = int(os.getenv("CHROMA_PORT", "8000"))
-CHROMA_PERSIST_DIR = os.getenv(
-    "CHROMA_PERSIST_DIR", str(PROJECT_ROOT / "data" / "chroma")
-)
+CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", str(PROJECT_ROOT / "data" / "chroma"))
 CHROMA_COLLECTION_NAME = os.getenv("CHROMA_COLLECTION_NAME", "system-logs")
 
 # --- Embeddings ---

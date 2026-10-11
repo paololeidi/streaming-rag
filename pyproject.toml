@@ -1,0 +1,38 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [
+    ".venv",
+    "data",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line length handled by formatter
+    "UP017", # allow datetime.timezone.utc for wider python compatibility
+    "B008",  # allow FastAPI / Pydantic Field and Depends in argument defaults
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_unused_configs = true
+check_untyped_defs = true
+follow_imports = "silent"
+disable_error_code = ["arg-type", "assignment", "return-value"]
+exclude = [
+    "^.venv/",
+    "^data/",
+]
