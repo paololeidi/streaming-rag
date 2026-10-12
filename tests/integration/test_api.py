@@ -2,7 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+
+import langchain_mcp_adapters.client
+import pytest
+from fastapi import FastAPI
+from langchain_core.messages import AIMessage
+
+from api.main import lifespan
 
 
 def test_health_endpoint(client):
@@ -29,6 +36,19 @@ def test_query_endpoint_success(client):
     assert source["log_level"] == "ERROR"
     assert source["timestamp"] == "2026-10-10T12:05:00"
     assert "Database connection timeout" in source["excerpt"]
+
+
+def test_query_endpoint_empty_final_answer(client):
+    """Test POST /api/v1/query fallback answer when agent produces no AIMessage content."""
+
+    async def empty_answer_ainvoke(inputs, config=None):
+        return {"messages": [AIMessage(content="   ")]}
+
+    client.app.state.agent_graph.ainvoke = AsyncMock(side_effect=empty_answer_ainvoke)
+
+    response = client.post("/api/v1/query", json={"prompt": "Test empty"})
+    assert response.status_code == 200
+    assert response.json()["answer"] == "The agent did not produce a final answer."
 
 
 def test_query_endpoint_validation_errors(client):
@@ -89,3 +109,45 @@ def test_query_stream_endpoint_error_handling(client):
     content = response.text
     assert "data: [ERROR] Stream interrupted" in content
     assert "data: [DONE]" in content
+
+
+@pytest.mark.asyncio
+async def test_lifespan_mcp_server_success(monkeypatch):
+    """Test lifespan loads extra tools from MCP server when connection succeeds."""
+    monkeypatch.setattr("embeddings.HuggingFaceEmbedder.embed", lambda self, text: [0.1] * 384)
+    monkeypatch.setattr("api.main.MCP_SERVER_URL", "http://localhost:8001/sse")
+
+    mock_client_cls = MagicMock()
+    mock_client_inst = MagicMock()
+    mock_client_inst.get_tools = AsyncMock(return_value=["mock_tool_github"])
+    mock_client_cls.return_value = mock_client_inst
+    monkeypatch.setattr(langchain_mcp_adapters.client, "MultiServerMCPClient", mock_client_cls)
+
+    mock_build = AsyncMock(return_value="graph_with_mcp")
+    monkeypatch.setattr("api.main.build_agent_graph", mock_build)
+
+    test_app = FastAPI(lifespan=lifespan)
+    async with lifespan(test_app):
+        assert test_app.state.agent_graph == "graph_with_mcp"
+        mock_build.assert_called_once_with(["mock_tool_github"])
+
+
+@pytest.mark.asyncio
+async def test_lifespan_mcp_server_error_fallback(monkeypatch):
+    """Test lifespan gracefully falls back to native tools when MCP server fails."""
+    monkeypatch.setattr("embeddings.HuggingFaceEmbedder.embed", lambda self, text: [0.1] * 384)
+    monkeypatch.setattr("api.main.MCP_SERVER_URL", "http://localhost:8001/sse")
+
+    mock_client_cls = MagicMock()
+    mock_client_inst = MagicMock()
+    mock_client_inst.get_tools = AsyncMock(side_effect=RuntimeError("MCP server offline"))
+    mock_client_cls.return_value = mock_client_inst
+    monkeypatch.setattr(langchain_mcp_adapters.client, "MultiServerMCPClient", mock_client_cls)
+
+    mock_build = AsyncMock(return_value="graph_native_only")
+    monkeypatch.setattr("api.main.build_agent_graph", mock_build)
+
+    test_app = FastAPI(lifespan=lifespan)
+    async with lifespan(test_app):
+        assert test_app.state.agent_graph == "graph_native_only"
+        mock_build.assert_called_once_with()

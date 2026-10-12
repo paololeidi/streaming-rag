@@ -48,3 +48,45 @@ def test_query_similar(monkeypatch):
         n_results=7,
     )
     assert res == {"documents": [["doc1"]], "metadatas": [[{}]]}
+
+
+def test_get_client_persistent(monkeypatch):
+    """Test _get_client creates PersistentClient when CHROMA_HOST is empty."""
+    vector_store._client = None
+    monkeypatch.setattr(vector_store, "CHROMA_HOST", "")
+    mock_pc = MagicMock()
+    monkeypatch.setattr(vector_store.chromadb, "PersistentClient", lambda path: mock_pc)
+
+    client1 = vector_store._get_client()
+    client2 = vector_store._get_client()
+
+    assert client1 is mock_pc
+    assert client2 is mock_pc
+
+
+def test_get_client_http(monkeypatch):
+    """Test _get_client creates HttpClient when CHROMA_HOST is set."""
+    vector_store._client = None
+    monkeypatch.setattr(vector_store, "CHROMA_HOST", "chroma-svc")
+    monkeypatch.setattr(vector_store, "CHROMA_PORT", 8000)
+    mock_hc = MagicMock()
+    monkeypatch.setattr(vector_store.chromadb, "HttpClient", lambda host, port: mock_hc)
+
+    client = vector_store._get_client()
+    assert client is mock_hc
+
+
+def test_get_collection_caching(monkeypatch):
+    """Test get_collection creates collection on client and caches it."""
+    vector_store._collection = None
+    mock_client = MagicMock()
+    mock_coll = MagicMock()
+    mock_client.get_or_create_collection.return_value = mock_coll
+    monkeypatch.setattr(vector_store, "_get_client", lambda: mock_client)
+
+    coll1 = vector_store.get_collection()
+    coll2 = vector_store.get_collection()
+
+    assert coll1 is mock_coll
+    assert coll2 is mock_coll
+    mock_client.get_or_create_collection.assert_called_once()

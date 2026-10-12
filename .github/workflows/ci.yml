@@ -40,8 +40,8 @@ jobs:
       - name: Static Type Checking (Mypy)
         run: mypy src/
 
-      - name: Run Test Suite (Pytest)
-        run: pytest --cov=src --cov-report=term-missing tests/
+      - name: Run Test Suite with Coverage Check (>=90%)
+        run: pytest --cov=src --cov-report=term-missing --cov-fail-under=90 tests/
 
   docker-build:
     name: Docker Build Validation
