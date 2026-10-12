@@ -109,12 +109,23 @@ Phase 5: Interactive Demo & Showcase (Streamlit/Chainlit UI, Live Incident Demo)
 
 **Goal:** Enhance log generation realism, optimize data retention, and improve search relevance across metadata dimensions.
 
-- [ ] **4.1 Richer Distributed Log Generation:**
-  - Expand `SystemLog` schema with enterprise distributed tracing metadata:
-    - `trace_id` and `span_id` (enabling correlation across microservices for a single user journey).
-    - `environment` (`production`, `staging`), `region` (`us-east-1`, `eu-west-1`), `cluster_id`.
-    - HTTP context (`status_code`, `http_method`, `endpoint`, `duration_ms`, `customer_id`).
-  - Upgrade mock producer to simulate cascading failures (e.g., Auth service slows down -> Payment service retries -> Database runs out of connections).
+- [ ] **4.1 Scenario-Driven Log Generation & Multi-Incident Simulation:**
+  - *Current limitation:* The mock producer alternates solely between generic INFO heartbeats and one single ERROR type (`Connection timeout to database`), constraining agent demo queries to trivial questions like *"which service had errors?"*.
+  - *Target architecture:*
+    - **Enterprise Schema Enrichment:** Add `trace_id`, `span_id`, `environment` (`prod`/`staging`), `region` (`us-east-1`/`eu-west-1`), and HTTP context (`status_code`, `http_method`, `endpoint`, `duration_ms`, `customer_id`).
+    - **Multi-Archetype Incident Simulator:** Upgrade the mock producer with selectable incident profiles:
+      - *Database & Connection Pool Exhaustion:* `HikariPool - Connection is not available, request timed out`, deadlock alerts, lock wait timeouts on specific tables.
+      - *Security & Access Anomalies:* Spikes of `401 Unauthorized` / `403 Forbidden`, expired JWT claims, credential-stuffing patterns on `/api/v1/auth/login`.
+      - *Third-Party & Downstream Degradation:* External provider rate limiting (`StripeAPIError: 429 Too Many Requests`), webhook delivery timeouts, payment gateway 502 Bad Gateway.
+      - *Resource & Memory Exhaustion:* `OutOfMemoryError: Java heap space`, excessive GC pauses (>3000ms), container cgroup OOM kills.
+      - *Cascading Microservice Outages:* Upstream gateway 504 timeouts triggering retry storms, circuit breakers tripping (`CLOSED` -> `OPEN`) on dependent services.
+    - **Expanded Demo Questions Unlocked for the Agent:**
+      - *"Which third-party integration is currently rate-limiting us or returning 429s?"*
+      - *"Are there any signs of authentication anomalies or brute-force attempts on the auth service in the last hour?"*
+      - *"Trace customer transaction `cust_9412` across services to explain why checkout failed."*
+      - *"Which endpoints are seeing elevated 5xx error rates, and what are their p95 latency percentiles?"*
+      - *"Did any service experience memory leaks or GC pauses prior to terminating?"*
+      - *"What was the root cause and downstream blast radius of the database connection pool saturation?"*
 - [ ] **4.2 Advanced Chunking Strategies:**
   - Experiment with dynamic chunking:
     - Window-based aggregation: group consecutive logs from the same service/trace within a 10-second window into a single chunk.
