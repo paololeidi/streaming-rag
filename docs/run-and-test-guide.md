@@ -155,6 +155,11 @@ docker compose down -v
 
 When iterating on Python modules, run the infrastructure dependencies in Docker and the Python components locally.
 
+> [!NOTE] Where is ChromaDB running in local development?
+> In this local mode, **ChromaDB does not run as a separate server or container**.
+> Because `CHROMA_HOST` is left unset in `.env`, `src/vector_store.py` automatically initializes an **embedded in-process client** (`chromadb.PersistentClient`) backed by SQLite files persisted to `data/chroma/`.
+> Both the consumer and the API / MCP server interact directly with this local directory on disk, so you do **not** need to start a Chroma container or server process.
+
 #### Step 2.1: Start Kafka Broker
 
 Start local Kafka in KRaft mode (no Zookeeper required):
@@ -214,15 +219,16 @@ The FastAPI application initializes the LangGraph ReAct agent graph, warms up th
 
 The MCP server exposes `vector_search` and `log_stats` tools via the Model Context Protocol:
 
-**SSE Mode (HTTP/SSE transport on port 8001):**
+**Stdio Mode (Default - standard input/output for local desktop clients like Cursor and Claude Desktop):**
+```bash
+.venv/Scripts/python src/mcp_server/server.py
+```
+*(Desktop clients typically spawn this command automatically via their MCP configuration file).*
+
+**SSE Mode (HTTP/SSE transport on port 8001 - for MCP Inspector or external agents):**
 ```bash
 # Terminal 4
 .venv/Scripts/python src/mcp_server/server.py --sse
-```
-
-**Stdio Mode (Standard input/output for local desktop clients):**
-```bash
-.venv/Scripts/python src/mcp_server/server.py
 ```
 
 ---

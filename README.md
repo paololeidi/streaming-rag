@@ -56,53 +56,28 @@ The system is built end-to-end: logs flow from a Kafka stream into a vector data
 
 
 
-## Quick start
+## Quick start (Recommended: Agent-Assisted)
 
-The fastest way to spin up the complete end-to-end stack (Kafka KRaft, ChromaDB, Ollama with `llama3.2:3b`, Producer, Consumer, FastAPI app, and MCP server) is with Docker Compose:
+The easiest and fastest way to set up, launch, and verify the project is to let your **AI Coding Assistant / Agent** (Cursor, Claude Code, Copilot, Antigravity, Aider, etc.) run it autonomously using the **[AGENT_GUIDE.md](AGENT_GUIDE.md)** runbook.
 
-```bash
-# 1. Prepare environment configuration (optional)
-cp .env.example .env
+Simply prompt your assistant:
+> *"Start the application following the agent guide"*
 
-# 2. Start the full stack
-docker compose up --build
-```
+The agent will ask you whether you prefer **Path A (Full Docker Compose - zero local setup)** or **Path B (Local Python hybrid development)**, and will then autonomously verify prerequisites, launch services, seed initial logs, execute health checks and test queries, and deliver working endpoints.
 
-When initialization completes:
-
-| Service | Endpoint | Description |
-|---|---|---|
-| **API & Swagger UI** | [http://localhost:8000/docs](http://localhost:8000/docs) | Interactive OpenAPI documentation & query interface |
-| **Health Check** | [http://localhost:8000/health](http://localhost:8000/health) | API liveness & readiness endpoint |
-| **MCP Server (SSE)** | [http://localhost:8001/sse](http://localhost:8001/sse) | Model Context Protocol SSE transport for AI clients |
-
-Stop the stack at any time with `Ctrl+C`, or run detached: `docker compose up --build -d`.
+### Prerequisites
+Make sure the following tools are available on your system before startup:
+- **Docker & Docker Compose** (running daemon, required for containers / Kafka KRaft broker).
+- **Ollama** running with the model pulled: `ollama pull llama3.2:3b` (required for local LLM inference in hybrid mode).
+- **Python 3.11+ / 3.12** & virtual environment (required only if choosing local hybrid development).
 
 ---
 
-## 📖 Step-by-Step Guide: Build, Run & Test
+## 🛠️ Manual Setup Guide
 
-For full instructions on building the system, running individual components (producer, consumer, API, MCP server), and testing tools, the agent, and endpoints:
+If you prefer to configure, build, and run the stack manually step-by-step (Docker Compose, individual Python services, Kafka, Kubernetes/Helm on Kind, or automated test suites):
 
 👉 **[docs/run-and-test-guide.md](docs/run-and-test-guide.md)**
-
-### What the guide covers:
-- **Building the Project:**
-  - Local Python virtual environment setup (`requirements.txt` and `requirements-dev.txt`).
-  - Container image builds using multi-stage `Dockerfile`.
-  - Local Kubernetes deployments on Kind via Helm (`charts/streaming-rag/`).
-- **Running Components Individually:**
-  - Starting local Kafka KRaft and Ollama (`llama3.2:3b`).
-  - Running the mock log producer (`src/producer.py`).
-  - Running the real-time ingestion consumer and vector pipeline (`src/consumer.py`).
-  - Launching the FastAPI server (`src/api/main.py`).
-  - Launching the MCP server in SSE or stdio mode (`src/mcp_server/server.py`).
-- **Testing the API, Agent & Tools:**
-  - Testing REST endpoints (`POST /api/v1/query`) and real-time token streaming (`POST /api/v1/query/stream` via SSE).
-  - Invoking the LangGraph ReAct agent programmatically in Python.
-  - Testing the `vector_search` and `log_stats` tools directly and via MCP clients.
-  - Executing automated tests with strict test coverage enforcement (`pytest --cov-fail-under=90`).
-  - Running code quality gates (`ruff check`, `ruff format`, `mypy`).
 
 ---
 
@@ -112,6 +87,7 @@ For full instructions on building the system, running individual components (pro
 |---|---|
 | [docs/technical-guide.md](docs/technical-guide.md) | **Comprehensive system architecture & technical implementation guide** |
 | [docs/run-and-test-guide.md](docs/run-and-test-guide.md) | **Step-by-step build, run, and testing playbook** |
+| [AGENT_GUIDE.md](AGENT_GUIDE.md) | **AI Agent & Coding Assistant Runbook (Automated onboarding & testing)** |
 | [docs/data-contract.md](docs/data-contract.md) | Pydantic log schema & serialization data contract |
 | [docs/improvements.md](docs/improvements.md) | Production improvements & enterprise backlog |
 | [roadmap.md](roadmap.md) | Development roadmap & completed phase milestones |
