@@ -1,5 +1,7 @@
 # End-to-End Streaming RAG
 
+> ☕ **Looking for the Java version?** Check out the Java implementation [here](https://github.com/paololeidi/streaming-rag-java).
+
 Cloud-native, event-driven Streaming RAG for real-time log ingestion, vectorization, and intelligent incident analysis — exposed via an agentic API and an MCP server for interoperability with any AI client.
 
 ## Overview
@@ -90,7 +92,6 @@ If you prefer to configure, build, and run the stack manually step-by-step (Dock
 | [AGENT_GUIDE.md](AGENT_GUIDE.md) | **AI Agent & Coding Assistant Runbook (Automated onboarding & testing)** |
 | [docs/data-contract.md](docs/data-contract.md) | Pydantic log schema & serialization data contract |
 | [docs/improvements.md](docs/improvements.md) | Production improvements & enterprise backlog |
-| [roadmap.md](roadmap.md) | Development roadmap & completed phase milestones |
 | [charts/streaming-rag/README.md](charts/streaming-rag/README.md) | Helm values, Kind build/load/install |
 
 
