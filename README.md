@@ -1,5 +1,12 @@
 # End-to-End Streaming RAG
 
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115-teal.svg)](https://fastapi.tiangolo.com/)
+[![LangGraph](https://img.shields.io/badge/LangGraph-ReAct-purple.svg)](https://github.com/langchain-ai/langgraph)
+[![ChromaDB](https://img.shields.io/badge/ChromaDB-0.6.3-orange.svg)](https://www.trychroma.com/)
+[![Kafka](https://img.shields.io/badge/Apache%20Kafka-KRaft-red.svg)](https://kafka.apache.org/)
+[![MCP](https://img.shields.io/badge/MCP-FastMCP-purple.svg)](https://modelcontextprotocol.io/)
+
 > ☕ **Looking for the Java version?** Check out the Java implementation [here](https://github.com/paololeidi/streaming-rag-java).
 
 Cloud-native, event-driven Streaming RAG for real-time log ingestion, vectorization, and intelligent incident analysis — exposed via an agentic API and an MCP server for interoperability with any AI client.
@@ -75,6 +82,21 @@ Make sure the following tools are available on your system before startup:
 
 ---
 
+## ⚖️ Dual-Implementation Architectural Comparison
+
+| Dimension | Python Implementation (`streaming-rag`) | Java Implementation ([`streaming-rag-java`](https://github.com/paololeidi/streaming-rag-java)) |
+|---|---|---|
+| **Runtime & Language** | Python 3.11+ / FastAPI / Uvicorn | Java 21 LTS / Spring Boot 3.3.4 (Virtual Threads) |
+| **Concurrency Model** | `asyncio` Single-threaded Event Loop | Lightweight Virtual Threads (Project Loom) |
+| **Kafka Integration** | `confluent-kafka` (C-wrapper) | Native `spring-kafka` with KRaft & Manual Acks |
+| **Agentic Framework** | LangGraph (StateGraph ReAct) | LangChain4j (`@AiService` + `@Tool`) |
+| **Embeddings Execution** | SentenceTransformers (Python process) | **In-Process ONNX Runtime** (inside JVM) |
+| **Vector Store** | ChromaDB (In-Process / Embedded in Python) | **Apache Lucene 9 (In-Process / Embedded in Java)** |
+| **MCP Integration** | FastMCP Python server | Spring SSE & Stdio JSON-RPC 2.0 MCP Server |
+| **Packaging & Deploy** | Docker Compose / Helm / Kind | Multi-Stage Dockerfile / Compose / Helm |
+
+---
+
 ## 🛠️ Manual Setup Guide
 
 If you prefer to configure, build, and run the stack manually step-by-step (Docker Compose, individual Python services, Kafka, Kubernetes/Helm on Kind, or automated test suites):
@@ -90,6 +112,7 @@ If you prefer to configure, build, and run the stack manually step-by-step (Dock
 | [docs/technical-guide.md](docs/technical-guide.md) | **Comprehensive system architecture & technical implementation guide** |
 | [docs/run-and-test-guide.md](docs/run-and-test-guide.md) | **Step-by-step build, run, and testing playbook** |
 | [AGENT_GUIDE.md](AGENT_GUIDE.md) | **AI Agent & Coding Assistant Runbook (Automated onboarding & testing)** |
+| [docs/architecture-decisions.md](docs/architecture-decisions.md) | Architecture Decision Records (ADRs) |
 | [docs/data-contract.md](docs/data-contract.md) | Pydantic log schema & serialization data contract |
 | [docs/improvements.md](docs/improvements.md) | Production improvements & enterprise backlog |
 | [charts/streaming-rag/README.md](charts/streaming-rag/README.md) | Helm values, Kind build/load/install |

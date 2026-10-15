@@ -4,6 +4,29 @@ This document outlines the detailed technical roadmap designed to transition the
 
 ---
 
+## 🔄 Cross-Repository Parity & Alignment Backlog (from Java Sister Project)
+
+The following architectural and functional capabilities exist in the Java implementation ([`streaming-rag-java`](https://github.com/paololeidi/streaming-rag-java)) and are prioritized here for future Python alignment:
+
+- [ ] **P0.1 Multi-Archetype Incident & Realistic Log Generator:**
+  - *Current limitation:* The Python mock producer alternates only between generic INFO logs and a single static ERROR string (`Connection timeout to database for {service}`) with unstructured fake text.
+  - *Java counterpart:* `MockLogGenerator.java` models realistic enterprise incident patterns with authentic diagnostic context:
+    - `user-auth`: JWT expiry (`TTL 3600s`), OAuth2 multi-factor challenges, brute-force IP rate-limiting (`/oauth/token`).
+    - `inventory-service`: Optimistic locking failure exceptions (`OptimisticLockingFailureException`) on SKU decrement with real stack traces.
+    - `payment-gateway`: Stripe API timeouts, 3D-Secure handshakes, and idempotent transaction references (`ord_...`, `usr_...`).
+    - `frontend-bff`: Upstream 504 gateway timeouts and circuit-breaker alerts.
+- [ ] **P0.2 Programmatic Burst Log Generation API:**
+  - *Current limitation:* The Python producer only runs as an infinite `while True:` loop.
+  - *Java counterpart:* `generateAndSendBurst(int count)` allows programmatic and automated generation of batch test bursts for CI/CD, integration testing, and live demo scenarios.
+- [ ] **P0.3 Kafka Consumer Dead Letter Queue (DLQ) & Resilience:**
+  - *Current limitation:* Unparseable or poisoned messages are skipped and logged to stdout, but not preserved.
+  - *Java counterpart:* Configured with `DefaultErrorHandler` (2 retries, 1s backoff) routing corrupted messages to a dedicated DLQ topic (`system-logs-dlq`) with partition/offset tracking.
+- [ ] **P0.4 Enriched Source Citations with Similarity Confidence Scores:**
+  - *Current limitation:* Python's `LogSource` schema includes only `service_name`, `log_level`, `timestamp`, and `excerpt`.
+  - *Java counterpart:* Java includes `eventId` and the cosine vector similarity `score` (`double score`), allowing the agent and end users to gauge semantic retrieval relevance and reference exact event UUIDs.
+
+---
+
 ## 🎯 Strategic Priorities Overview
 
 ```
