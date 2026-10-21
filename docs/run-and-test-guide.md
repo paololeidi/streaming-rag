@@ -178,11 +178,14 @@ ollama run llama3.2:3b
 
 #### Step 2.3: Run the Log Producer
 
-The producer generates synthetic system logs using `Faker` conforming to the Pydantic `SystemLog` data contract:
+The producer generates realistic multi-archetype synthetic system logs (`payment-gateway`, `user-auth`, `inventory-service`, `frontend-bff`) with weighted log levels (70% `INFO`, 20% `WARN`, 10% `ERROR`) and realistic multi-line stack traces conforming to the Pydantic `SystemLog` data contract:
 
 ```bash
-# Terminal 1
+# Terminal 1 (continuous streaming mode)
 .venv/Scripts/python src/producer.py
+
+# Or send a fixed burst of 20 logs and exit immediately:
+.venv/Scripts/python src/producer.py --burst 20
 ```
 Output:
 ```text
@@ -193,7 +196,7 @@ Log sent to system-logs [1]
 
 #### Step 2.4: Run the Ingestion Consumer
 
-The consumer reads logs from Kafka, applies chunking (`chunk_log`), computes dense vector embeddings using `all-MiniLM-L6-v2`, writes vectors and metadata to ChromaDB (`data/chroma/`), and executes manual offset commits:
+The consumer reads logs from Kafka, applies chunking (`chunk_log`), computes dense vector embeddings using `all-MiniLM-L6-v2`, writes vectors and metadata to ChromaDB (`data/chroma/`) with exponential backoff retries, routes poison-pill or persistently failing messages to the Dead Letter Queue (`system-logs-dlq`), and executes manual offset commits:
 
 ```bash
 # Terminal 2
@@ -201,8 +204,8 @@ The consumer reads logs from Kafka, applies chunking (`chunk_log`), computes den
 ```
 Output:
 ```text
-Consumer subscribed to ['system-logs']. Ingestion pipeline running...
-Upserted log kafka-0-101 into ChromaDB (service=payment-gateway, level=INFO)
+Listening on topic 'system-logs'...
+Ingested 22222222-2222-2222-2222-222222222222 [ERROR] payment-gateway: Stripe API unreachable after 3 exponential backoff retries (HTTP 502)
 ```
 
 #### Step 2.5: Run the FastAPI Backend
@@ -267,13 +270,15 @@ curl -s -X POST http://localhost:8000/api/v1/query \
 Sample JSON Response:
 ```json
 {
-  "answer": "In the last 30 minutes, 4 connection timeout errors occurred in payment-gateway...",
+  "answer": "In the last 30 minutes, Stripe API timeout errors occurred in payment-gateway...",
   "sources": [
     {
+      "event_id": "22222222-2222-2222-2222-222222222222",
       "service_name": "payment-gateway",
       "log_level": "ERROR",
       "timestamp": "2026-10-12T10:00:00+00:00",
-      "excerpt": "[ERROR] payment-gateway @ 2026-10-12T10:00:00: Connection timeout to database"
+      "score": 0.87,
+      "excerpt": "[ERROR] payment-gateway @ 2026-10-12T10:00:00+00:00\nStripe API unreachable after 3 exponential backoff retries (HTTP 502)"
     }
   ]
 }
@@ -289,13 +294,10 @@ curl -N -X POST http://localhost:8000/api/v1/query/stream \
 ```
 Response stream:
 ```text
-data: {"token": "Based"}
-
-data: {"token": " on"}
-
-data: {"token": " the"}
-
-data: {"token": " logs"}
+data: Based
+data:  on
+data:  the
+data:  logs
 ...
 data: [DONE]
 ```
@@ -319,7 +321,7 @@ from agent.graph import build_agent_graph
 
 async def main():
     # Build graph with native Chroma tools
-    graph = build_agent_graph()
+    graph = await build_agent_graph()
 
     # Send a prompt to the ReAct agent
     result = await graph.ainvoke(
@@ -427,7 +429,7 @@ mypy src/
 ### ChromaDB returns empty search results
 - Make sure the consumer has been running and processing messages from the producer:
   ```bash
-  python src/producer.py   # produce events
-  python src/consumer.py   # ingest & vectorize events
+  python src/producer.py --burst 20   # produce a batch of 20 events
+  python src/consumer.py              # ingest & vectorize events
   ```
 - Check that the `data/chroma/` directory exists and has write permissions.

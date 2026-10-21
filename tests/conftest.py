@@ -78,6 +78,13 @@ def mock_chroma_collection(monkeypatch):
         ]
     }
     mock_coll.query.return_value = {
+        "ids": [
+            [
+                "22222222-2222-2222-2222-222222222222",
+                "33333333-3333-3333-3333-333333333333",
+            ]
+        ],
+        "distances": [[0.15, 0.35]],
         "documents": [
             [
                 "[ERROR] payment-service @ 2026-10-10T12:05:00\nDatabase connection timeout",
@@ -87,11 +94,13 @@ def mock_chroma_collection(monkeypatch):
         "metadatas": [
             [
                 {
+                    "event_id": "22222222-2222-2222-2222-222222222222",
                     "service_name": "payment-service",
                     "log_level": "ERROR",
                     "timestamp": "2026-10-10T12:05:00+00:00",
                 },
                 {
+                    "event_id": "33333333-3333-3333-3333-333333333333",
                     "service_name": "user-auth",
                     "log_level": "WARN",
                     "timestamp": "2026-10-10T12:10:00+00:00",
@@ -115,7 +124,11 @@ def mock_agent_graph():
         return {
             "messages": [
                 ToolMessage(
-                    content="[1] ERROR | payment-service @ 2026-10-10T12:05:00\nDatabase connection timeout",
+                    content=(
+                        "[1] ERROR | payment-service @ 2026-10-10T12:05:00 "
+                        "| event_id=22222222-2222-2222-2222-222222222222 | score=0.870\n"
+                        "Database connection timeout"
+                    ),
                     tool_call_id="call_1",
                 ),
                 AIMessage(content="Payment service crashed due to a database connection timeout."),

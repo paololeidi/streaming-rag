@@ -1,31 +1,100 @@
 import asyncio
+from typing import Any
 
-from confluent_kafka import Consumer, KafkaError, KafkaException
+from confluent_kafka import Consumer, KafkaError, KafkaException, Producer
 from pydantic import ValidationError
 
 from chunking import chunk_log
-from config import KAFKA_BOOTSTRAP_SERVERS, KAFKA_CONSUMER_GROUP, KAFKA_TOPIC_SYSTEM_LOGS
+from config import (
+    KAFKA_BOOTSTRAP_SERVERS,
+    KAFKA_CONSUMER_GROUP,
+    KAFKA_TOPIC_SYSTEM_LOGS,
+    KAFKA_TOPIC_SYSTEM_LOGS_DLQ,
+)
 from embeddings import HuggingFaceEmbedder
 from model import SystemLog
 from vector_store import upsert_log
 
 
+def publish_to_dlq(
+    dlq_producer: Producer,
+    msg: Any,
+    error_reason: str,
+    dlq_topic: str = KAFKA_TOPIC_SYSTEM_LOGS_DLQ,
+) -> None:
+    """Publish a failed or corrupted Kafka message to the Dead Letter Queue (DLQ)."""
+    orig_topic = (
+        msg.topic()
+        if hasattr(msg, "topic") and callable(msg.topic) and isinstance(msg.topic(), str)
+        else KAFKA_TOPIC_SYSTEM_LOGS
+    )
+    orig_partition = (
+        msg.partition() if hasattr(msg, "partition") and callable(msg.partition) else -1
+    )
+    orig_offset = msg.offset() if hasattr(msg, "offset") and callable(msg.offset) else -1
+    raw_key = (
+        msg.key()
+        if hasattr(msg, "key") and callable(msg.key) and isinstance(msg.key(), (bytes, str))
+        else None
+    )
+    raw_value = msg.value() if hasattr(msg, "value") and callable(msg.value) else None
+
+    headers = [
+        ("dlq_reason", str(error_reason).encode("utf-8")),
+        ("original_topic", str(orig_topic).encode("utf-8")),
+        ("original_partition", str(orig_partition).encode("utf-8")),
+        ("original_offset", str(orig_offset).encode("utf-8")),
+    ]
+
+    dlq_producer.produce(
+        dlq_topic,
+        key=raw_key,
+        value=raw_value,
+        headers=headers,
+    )
+    dlq_producer.poll(0)
+    print(
+        f"Routed message at offset {orig_offset} on partition {orig_partition} "
+        f"to DLQ '{dlq_topic}': {error_reason}"
+    )
+
+
 async def process_message(
-    msg,
+    msg: Any,
     log_entry: SystemLog,
     consumer: Consumer,
     embedder: HuggingFaceEmbedder,
+    dlq_producer: Producer | None = None,
+    max_retries: int = 2,
+    retry_backoff_sec: float = 1.0,
 ) -> None:
     chunk = chunk_log(log_entry, partition=msg.partition(), offset=msg.offset())
 
-    embedding = await asyncio.to_thread(embedder.embed, chunk.text)
-    await asyncio.to_thread(
-        upsert_log,
-        chunk.event_id,
-        embedding,
-        chunk.metadata,
-        chunk.text,
-    )
+    for attempt in range(max_retries + 1):
+        try:
+            embedding = await asyncio.to_thread(embedder.embed, chunk.text)
+            await asyncio.to_thread(
+                upsert_log,
+                chunk.event_id,
+                embedding,
+                chunk.metadata,
+                chunk.text,
+            )
+            break
+        except Exception as exc:
+            if attempt < max_retries:
+                backoff = retry_backoff_sec * (2**attempt)
+                await asyncio.sleep(backoff)
+            else:
+                if dlq_producer is not None:
+                    publish_to_dlq(
+                        dlq_producer,
+                        msg,
+                        f"Processing failed after {max_retries + 1} attempts: {exc}",
+                    )
+                    consumer.commit(message=msg, asynchronous=False)
+                    return
+                raise
 
     consumer.commit(message=msg, asynchronous=False)
     print(
@@ -43,6 +112,7 @@ async def run_consumer() -> None:
     }
 
     consumer = Consumer(conf)
+    dlq_producer = Producer({"bootstrap.servers": KAFKA_BOOTSTRAP_SERVERS})
     consumer.subscribe([KAFKA_TOPIC_SYSTEM_LOGS])
     embedder = HuggingFaceEmbedder()
 
@@ -66,11 +136,12 @@ async def run_consumer() -> None:
 
             try:
                 log_entry = SystemLog.from_kafka_payload(raw_value)
-            except ValidationError as exc:
+            except (ValidationError, UnicodeDecodeError) as exc:
                 print(
                     f"Skipping invalid message at offset {msg.offset()} "
                     f"on partition {msg.partition()}: {exc}"
                 )
+                publish_to_dlq(dlq_producer, msg, f"ValidationError: {exc}")
                 consumer.commit(message=msg, asynchronous=False)
                 continue
 
@@ -81,14 +152,16 @@ async def run_consumer() -> None:
                     f"Failed to process message at offset {msg.offset()} "
                     f"on partition {msg.partition()}: {exc}"
                 )
+                publish_to_dlq(dlq_producer, msg, f"ProcessingError: {exc}")
 
     except KeyboardInterrupt:
         print("\nStopping consumer...")
     finally:
+        dlq_producer.flush(timeout=1.0)
         consumer.close()
 
 
-def main():
+def main() -> None:
     asyncio.run(run_consumer())
 
 

@@ -12,7 +12,7 @@ A unified, comprehensive reference detailing the engineering motivations, archit
    - [Kafka KRaft Broker Architecture](#kafka-kraft-broker-architecture)
    - [Typed Log Contract (`SystemLog`)](#typed-log-contract-systemlog)
    - [Producer & Partition Key Strategy](#producer--partition-key-strategy)
-   - [Consumer Group & Offset Commit Guarantees](#consumer-group--offset-commit-guarantees)
+   - [Consumer Group, Retry Resilience & Dead Letter Queue (DLQ)](#consumer-group-retry-resilience--dead-letter-queue-dlq)
 4. [Layer 2 — Vector Processing & Semantic Storage (ChromaDB)](#4-layer-2--vector-processing--semantic-storage-chromadb)
    - [Embedding Model Selection](#embedding-model-selection)
    - [Log Chunking & Synthesis](#log-chunking--synthesis)
@@ -50,9 +50,9 @@ Diagnosing production incidents in distributed cloud architectures is inherently
 
 ### The Solution: Event-Driven Streaming RAG
 This project bridges distributed data streaming and agentic reasoning. Rather than performing static batch ingestion or relying on LLM internal memory:
-- **Continuous Ingestion:** Application logs are captured live from an Apache Kafka event stream.
-- **In-Process Vectorization:** Incoming events are vectorized on the fly using a local dense embedding model and stored in a vector database alongside operational metadata.
-- **Agentic Reasoning Interface:** A LangGraph ReAct agent powered by a local quantized LLM dynamically selects between semantic similarity search and statistical aggregation queries, synthesizing grounded answers with citations.
+- **Continuous Ingestion:** Application logs are captured live from an Apache Kafka event stream with Dead Letter Queue (`system-logs-dlq`) protection.
+- **In-Process Vectorization:** Incoming events are vectorized on the fly using a local dense embedding model and stored in a vector database alongside operational metadata (`event_id`, `service_name`, `log_level`, `timestamp`, `partition`, `offset`).
+- **Agentic Reasoning Interface:** A LangGraph ReAct agent powered by a local quantized LLM dynamically selects between semantic similarity search and statistical aggregation queries, synthesizing grounded answers with enriched citations (`event_id` and similarity `score`).
 - **Open Protocol Interoperability:** An integrated Model Context Protocol (MCP) server exposes the real-time context to external AI clients (IDE assistants, multi-agent systems) without requiring custom API clients.
 
 ---
@@ -64,12 +64,13 @@ This project bridges distributed data streaming and agentic reasoning. Rather th
 │                                                                                  │
 │   Mock Producer  ──────►  Kafka Broker  ──────►  Ingestion Consumer              │
 │  (src/producer.py)        (KRaft Mode)           (src/consumer.py)               │
-│                                                          │                       │
-│                                                          ▼                       │
+│   [stream / --burst]      ├── system-logs               │                        │
+│                           └── system-logs-dlq ◄─────────┤ (DLQ on error/corrupt) │
+│                                                         ▼                        │
 │                                                 all-MiniLM-L6-v2                 │
 │                                                (src/embeddings.py)               │
-│                                                          │                       │
-│                                                          ▼                       │
+│                                                         │                        │
+│                                                         ▼                        │
 │                                                      ChromaDB                    │
 │                                                (data/chroma or HTTP)             │
 └────────────────────────────────────────┬─────────────────────────────────────────┘
@@ -83,7 +84,7 @@ This project bridges distributed data streaming and agentic reasoning. Rather th
 │              │                                                                   │
 │              ▼                                                                   │
 │   LangGraph ReAct Agent (src/agent/graph.py · Ollama llama3.2:3b)                │
-│         ├── vector_search ──► ChromaDB (semantic retrieval)                      │
+│         ├── vector_search ──► ChromaDB (semantic retrieval + confidence score)   │
 │         ├── log_stats    ──► ChromaDB (metadata aggregation)                     │
 │         └── [MCP Tools]  ──► External MCP Servers (via SSE)                      │
 └────────────────────────────────────────┬─────────────────────────────────────────┘
@@ -107,39 +108,40 @@ The ingestion layer establishes a high-throughput, fault-tolerant message pipeli
 
 ### Kafka KRaft Broker Architecture
 - **Single-Node KRaft Mode (`confluentinc/cp-kafka:7.5.0`):** Operates without an Apache ZooKeeper cluster. Combined broker and controller roles (`KAFKA_PROCESS_ROLES=broker,controller`) drastically reduce container memory footprint and eliminate ZooKeeper metadata synchronization lag.
-- **Topic Configuration:** Logs are streamed to `system-logs` (default partition replication factor 1 for local environments).
+- **Topic Configuration:** Primary logs stream to `system-logs`; corrupted or persistently failing records route to `system-logs-dlq`.
 
 ### Typed Log Contract (`SystemLog`)
 All log events adhere to a strict Pydantic model (`src/model/models.py`):
 
 ```python
-class LogLevel(str, Enum):
+class LogLevel(StrEnum):
     INFO = "INFO"
     WARN = "WARN"
     ERROR = "ERROR"
 
 
 class SystemLog(BaseModel):
-    event_id: UUID = Field(default_factory=uuid4)
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    service_name: str = Field(min_length=1, max_length=100)
+    event_id: UUID | None = Field(default=None)
+    timestamp: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    service_name: str = Field(min_length=1)
     log_level: LogLevel
-    message: str = Field(min_length=1, max_length=2000)
+    message: str = Field(min_length=1)
     stack_trace: str | None = None
 ```
 
 ### Producer & Partition Key Strategy
 The mock producer (`src/producer.py`) simulates realistic microservice activity across four domains (`payment-gateway`, `user-auth`, `inventory-service`, `frontend-bff`):
-- **Partition Key Assignment:** The message key is set to `service_name.encode("utf-8")`.
-- **Ordering Guarantee:** Because Kafka maps partitions using `hash(key) % num_partitions`, all logs emitted by the same service are guaranteed to land on the same partition in strict chronological order.
-- **Asynchronous Delivery:** Employs `confluent_kafka.Producer` with delivery callback polling (`producer.poll(0)`) and graceful shutdown flush (`producer.flush()`).
+- **Multi-Archetype Realistic Telemetry:** Generates weighted log levels (70% `INFO`, 20% `WARN`, 10% `ERROR`), domain-specific messages with realistic identifiers (`usr_...`, `ord_...`, `SKU-...`, IPv4 addresses), and multi-line stack traces for `ERROR` events.
+- **Programmatic & CLI Burst Mode:** Exposes `send_log()`, `generate_and_send()`, and `generate_and_send_burst(count)` as well as CLI `--burst <count>` for deterministic test seeding alongside continuous streaming.
+- **Partition Key Assignment:** The message key is set to `service_name.encode("utf-8")`. Because Kafka maps partitions using `hash(key) % num_partitions`, all logs emitted by the same service land on the same partition in strict chronological order.
 
-### Consumer Group & Offset Commit Guarantees
+### Consumer Group, Retry Resilience & Dead Letter Queue (DLQ)
 The consumer (`src/consumer.py`) belongs to the `rag-ingestion-group` consumer group:
 - **`auto.offset.reset = earliest`:** Guarantees that new consumer instances replay existing topic history.
 - **Manual Offset Commits (`enable.auto.commit = False`):**
   Kafka offsets are **only committed synchronously** (`consumer.commit(message=msg, asynchronous=False)`) *after* the log embedding has been successfully calculated and upserted into ChromaDB.
-- **At-Least-Once Delivery:** If the consumer container crashes mid-vectorization, uncommitted offsets are redelivered upon restart, preventing data loss.
+- **Exponential Backoff Retries:** `process_message()` retries transient embedding or ChromaDB errors up to `max_retries=2` times with exponential backoff (`1.0s`, `2.0s`).
+- **Dead Letter Queue (`system-logs-dlq`):** Malformed payloads (`ValidationError` / `UnicodeDecodeError`) or messages that exhaust all retry attempts are published via `publish_to_dlq()` to `system-logs-dlq` with diagnostic headers (`dlq_reason`, `original_topic`, `original_partition`, `original_offset`) before committing offsets.
 
 ---
 
@@ -156,10 +158,11 @@ The vector layer converts raw string logs into spatial embeddings to allow seman
 Logs are small structured payloads rather than lengthy unstructured documents. The chunking strategy (`src/chunking.py`) applies a **one-log-entry-to-one-chunk** rule:
 - `SystemLog.to_embedding_text()` compiles service name, log level, UTC timestamp, message, and stack trace into a normalized plain-text format:
   ```text
-  [ERROR] payment-gateway @ 2026-10-12T10:00:00+00:00: Connection timeout to database
-  stack_trace: ConnectionPoolTimeout: Timeout waiting for connection from pool...
+  [ERROR] payment-gateway @ 2026-10-12T10:00:00+00:00
+  Stripe API unreachable after 3 exponential backoff retries (HTTP 502)
+  stack_trace: java.net.SocketTimeoutException: Read timed out connecting to https://api.stripe.com/v1/charges...
   ```
-- Granular chunking prevents dilution of error signals that occurs when multiple unrelated logs are merged into a single chunk.
+- Metadata persisted per chunk includes `event_id`, `service_name`, `log_level`, `timestamp`, `partition`, and `offset`.
 
 ### ChromaDB Architecture: Embedded vs Client-Server
 The vector store wrapper (`src/vector_store.py`) provides seamless dual-mode operation:
@@ -193,7 +196,7 @@ Rather than using a rigid, static retrieval chain, the system builds an autonomo
 ### Native Agent Tools (`vector_search` & `log_stats`)
 Located in `src/agent/tools.py`:
 1. **`vector_search(query: str, k: int = 5) -> str`**:
-   Vectorizes the input query with `all-MiniLM-L6-v2`, queries ChromaDB for the top-$k$ nearest neighbors, and formats the matching logs. Excerpts are truncated to 400 characters to protect the LLM context window.
+   Vectorizes the input query with `all-MiniLM-L6-v2`, queries ChromaDB for the top-$k$ nearest neighbors, computes a normalized similarity confidence score (`score = round(1.0 / (1.0 + max(0.0, distance)), 3)`), and formats the matching logs with `event_id` and `score` in the header. Excerpts are truncated to 400 characters to protect the LLM context window.
 2. **`log_stats(log_level: str | None = None, service_name: str | None = None, minutes: int = 60) -> str`**:
    Bypasses semantic embedding. Directly queries ChromaDB metadata within a sliding time window (`now - timedelta(minutes=minutes)`), returning exact count breakdowns by service and level.
 
@@ -204,7 +207,7 @@ The system prompt (`src/agent/prompts.py`) enforces strict SRE operational guide
 - **Anti-Hallucination Policy:** If no matching logs are found in ChromaDB, the agent must reply: *"No matching logs found in the vector store"* rather than inventing plausible scenarios.
 
 ### FastAPI HTTP Layer & Real-Time Token Streaming (SSE)
-- **Synchronous Endpoint (`POST /api/v1/query`):** Returns `{ answer: str, sources: list[LogSource] }`.
+- **Synchronous Endpoint (`POST /api/v1/query`):** Returns `{ answer: str, sources: list[LogSource] }`, where each `LogSource` includes `event_id`, `service_name`, `log_level`, `timestamp`, `score`, and `excerpt`.
 - **Streaming Endpoint (`POST /api/v1/query/stream`):** Implements Server-Sent Events (SSE) via `StreamingResponse(media_type="text/event-stream")`. Streams LLM tokens as they are generated, followed by a terminating `data: [DONE]` event.
 - **Lifespan Context Manager:** The FastAPI `lifespan` hook pre-warms the Hugging Face embedding model into memory and initializes the shared singleton LangGraph agent graph at startup.
 
@@ -228,7 +231,7 @@ Model Context Protocol (MCP) is an open standard designed to decouple AI applica
 ### FastMCP Implementation & Schema Generation
 Built using `fastmcp` (`src/mcp_server/server.py`):
 - `fastmcp.FastMCP` auto-generates JSON Schema tool definitions from Python type annotations and docstrings.
-- Tools (`vector_search` and `log_stats`) share the underlying vector store and embedder logic with the agent layer, ensuring unified query behavior without code duplication.
+- Tools (`vector_search` and `log_stats`) share the underlying vector store, similarity score normalization, and embedder logic with the agent layer, ensuring unified query behavior without code duplication.
 
 ### Transport Modes: Stdio vs SSE
 1. **SSE Transport (`python src/mcp_server/server.py --sse`):**
@@ -291,3 +294,6 @@ Packaged in `charts/streaming-rag/`:
 | **ADR-07** | LLM Engine | **Ollama (`llama3.2:3b`)** | 2 GB memory footprint, tool-calling capability, fast CPU token streaming without cloud billing. |
 | **ADR-08** | Interoperability | **Model Context Protocol (FastMCP)** | Exposes live vector store to any MCP-compliant agent (Cursor, Claude) as a standard protocol. |
 | **ADR-09** | Containerization | **Single Multi-Stage Image** | Pre-bakes model weights for rapid cold starts; simplifies container registry management. |
+| **ADR-10** | Consumer Resilience | **DLQ (`system-logs-dlq`) + Retries** | Exponential backoff retries absorb transient errors; DLQ preserves poison-pill payloads with diagnostic headers. |
+| **ADR-11** | Log Simulation | **Multi-Archetype + Burst API** | Service-specific incident templates, weighted log levels, and `--burst N` / `generate_and_send_burst`. |
+| **ADR-12** | Source Citations | **Event ID + Similarity Score** | Normalizes vector distance into $[0, 1]$ confidence score and exposes `event_id` in `LogSource`. |

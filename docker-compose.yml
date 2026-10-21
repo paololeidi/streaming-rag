@@ -90,6 +90,7 @@ services:
         condition: service_healthy
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC_SYSTEM_LOGS: system-logs
     command: ["python", "src/producer.py"]
     restart: unless-stopped
 
@@ -103,6 +104,8 @@ services:
         condition: service_healthy
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      KAFKA_TOPIC_SYSTEM_LOGS: system-logs
+      KAFKA_TOPIC_SYSTEM_LOGS_DLQ: system-logs-dlq
       CHROMA_HOST: chroma
       CHROMA_PORT: "8000"
     command: ["python", "src/consumer.py"]

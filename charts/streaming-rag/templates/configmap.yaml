@@ -6,6 +6,8 @@ metadata:
     {{- include "streaming-rag.labels" . | nindent 4 }}
 data:
   KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+  KAFKA_TOPIC_SYSTEM_LOGS: "system-logs"
+  KAFKA_TOPIC_SYSTEM_LOGS_DLQ: "system-logs-dlq"
   CHROMA_HOST: "chroma"
   CHROMA_PORT: "8000"
   OLLAMA_BASE_URL: "http://ollama:11434"

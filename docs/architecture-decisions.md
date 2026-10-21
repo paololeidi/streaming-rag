@@ -17,6 +17,9 @@ This document details the **Architectural Decision Records (ADRs)** for the Stre
 | [**ADR-07**](#adr-07-local-quantized-ollama-llama323b-with-keep-alive) | Local Quantized Ollama `llama3.2:3b` with Keep-Alive | **Accepted** | Layer 3 (Agentic Layer) |
 | [**ADR-08**](#adr-08-model-context-protocol-fastmcp-for-interoperability) | Model Context Protocol (FastMCP) for Interoperability | **Accepted** | Layer 4 (MCP Protocol) |
 | [**ADR-09**](#adr-09-single-multi-stage-docker-image-with-pre-baked-weights) | Single Multi-Stage Docker Image with Pre-Baked Weights | **Accepted** | Layer 5 (Infrastructure) |
+| [**ADR-10**](#adr-10-dead-letter-queue-dlq-and-exponential-backoff-retry-resilience) | Dead Letter Queue (DLQ) & Exponential Backoff Retry Resilience | **Accepted** | Layer 1 (Ingestion Resilience) |
+| [**ADR-11**](#adr-11-multi-archetype-incident-generator-and-programmatic-burst-api) | Multi-Archetype Incident Generator & Programmatic Burst API | **Accepted** | Layer 1 (Simulation & Testing) |
+| [**ADR-12**](#adr-12-enriched-source-citations-with-normalized-similarity-scores) | Enriched Source Citations with Normalized Similarity Scores | **Accepted** | Layer 2 & 3 (Retrieval & API) |
 
 ---
 
@@ -43,8 +46,8 @@ We adopted **Kafka KRaft Mode** using `confluentinc/cp-kafka:7.5.0` with combine
 * **Trade-Off:** Single-node KRaft is optimized for development, testing, and single-broker validation; production horizontal scale requires configuring a 3-node controller quorum.
 
 ### Code References
-* [`docker-compose.yml`](file:///c:/Users/Utente/Projects/streaming-rag/docker-compose.yml#L9-L33) (lines 9–33)
-* [`charts/streaming-rag/templates/kafka.yaml`](file:///c:/Users/Utente/Projects/streaming-rag/charts/streaming-rag/templates/kafka.yaml)
+* [`docker-compose.yml`](../docker-compose.yml#L9-L33) (lines 9–33)
+* [`charts/streaming-rag/templates/kafka.yaml`](../charts/streaming-rag/templates/kafka.yaml)
 
 ---
 
@@ -70,8 +73,8 @@ We chose to **partition explicitly by `service_name`**.
 * **Trade-Off (Partition Hotspotting):** If one service logs orders of magnitude more events than others (e.g. an aggressive chatty service), its assigned partition receives disproportionate traffic. This is mitigated in production by balancing topic partition counts and configuring log sampling rates.
 
 ### Code References
-* [`src/producer.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/producer.py#L52-L60) (lines 52–60)
-* [`src/model/models.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/model/models.py#L25-L28) (lines 25–28)
+* [`src/producer.py`](../src/producer.py#L194-L212) (`send_log`)
+* [`src/model/models.py`](../src/model/models.py#L25-L28) (lines 25–28)
 
 ---
 
@@ -97,9 +100,9 @@ We adopted **Manual Synchronous Commits** (`enable.auto.commit = False`) combine
 * **Trade-Off (Commit Latency):** Synchronous commits add a round-trip network hop to Kafka per message. In high-throughput production, this can be optimized by batching messages (`consumer.poll()` micro-batches followed by single batch commit).
 
 ### Code References
-* [`src/consumer.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/consumer.py#L13-L35) (lines 13–35, `process_message`)
-* [`src/consumer.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/consumer.py#L37-L44) (lines 37–44, `conf`)
-* [`src/vector_store.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/vector_store.py#L32-L43) (lines 32–43, `upsert_log`)
+* [`src/consumer.py`](../src/consumer.py#L53-L98) (`process_message`)
+* [`src/consumer.py`](../src/consumer.py#L101-L108) (`conf`)
+* [`src/vector_store.py`](../src/vector_store.py#L32-L43) (`upsert_log`)
 
 ---
 
@@ -126,8 +129,8 @@ We selected **in-process `all-MiniLM-L6-v2`** via the `sentence-transformers` li
 * **Trade-Off:** CPU consumption during sustained burst ingestion. Mitigated by pre-baking model weights into Docker and supporting batch embedding (`embed_batch`).
 
 ### Code References
-* [`src/embeddings.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/embeddings.py#L6-L21) (lines 6–21)
-* [`Dockerfile`](file:///c:/Users/Utente/Projects/streaming-rag/Dockerfile#L18-L23) (lines 18–23, pre-download)
+* [`src/embeddings.py`](../src/embeddings.py#L6-L21) (lines 6–21)
+* [`Dockerfile`](../Dockerfile#L18-L23) (lines 18–23, pre-download)
 
 ---
 
@@ -147,7 +150,7 @@ The system must support two conflicting operational workflows:
 3. **Dedicated Enterprise Vector DB (Qdrant, Milvus):** High operational overhead for single-developer environments.
 
 ### Decision Outcome
-We implemented a **transparent dual-mode client wrapper** in [`src/vector_store.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/vector_store.py#L15-L23).
+We implemented a **transparent dual-mode client wrapper** in [`src/vector_store.py`](../src/vector_store.py#L15-L23).
 
 ### Decision Rationales & Trade-Offs
 * **Zero-Friction Local Testing:** When `CHROMA_HOST` is empty (default in local `.env`), it initializes `chromadb.PersistentClient(path="data/chroma")`. Tests run in-process against local disk files.
@@ -155,8 +158,8 @@ We implemented a **transparent dual-mode client wrapper** in [`src/vector_store.
 * **Clean Abstraction:** Downstream code calls `get_collection()`, `upsert_log()`, and `query_similar()` without needing to know which mode is active.
 
 ### Code References
-* [`src/vector_store.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/vector_store.py#L15-L30) (lines 15–30)
-* [`src/config.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/config.py#L15-L21) (lines 15–21)
+* [`src/vector_store.py`](../src/vector_store.py#L15-L30) (lines 15–30)
+* [`src/config.py`](../src/config.py#L16-L22) (lines 16–22)
 
 ---
 
@@ -178,8 +181,8 @@ In operational log analysis, this pattern fundamentally fails. For example:
 
 ### Decision Outcome
 We implemented a **LangGraph ReAct Agent** with two specialized tools:
-1. [`vector_search`](file:///c:/Users/Utente/Projects/streaming-rag/src/agent/tools.py#L20-L53): Semantic similarity retrieval for errors and stack traces.
-2. [`log_stats`](file:///c:/Users/Utente/Projects/streaming-rag/src/agent/tools.py#L55-L140): ChromaDB metadata filtering for exact frequency distributions across sliding time windows.
+1. [`vector_search`](../src/agent/tools.py#L20-L65): Semantic similarity retrieval for errors and stack traces.
+2. [`log_stats`](../src/agent/tools.py#L68-L152): ChromaDB metadata filtering for exact frequency distributions across sliding time windows.
 
 ### Decision Rationales & Trade-Offs
 * **Autonomous Intent Routing:** The agent dynamically decides which tool to invoke, refines queries if initial context is insufficient, and chains tools when questions require both statistical metrics and semantic evidence.
@@ -187,9 +190,9 @@ We implemented a **LangGraph ReAct Agent** with two specialized tools:
 * **Trade-Off (Latency & Loop Budget):** ReAct loops involve multiple LLM generation cycles (think $\rightarrow$ tool call $\rightarrow$ think $\rightarrow$ response). Mitigated by temperature 0 and concise system prompts.
 
 ### Code References
-* [`src/agent/graph.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/agent/graph.py#L33-L48) (lines 33–48)
-* [`src/agent/tools.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/agent/tools.py#L20-L140)
-* [`src/agent/prompts.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/agent/prompts.py#L3-L39)
+* [`src/agent/graph.py`](../src/agent/graph.py#L33-L48) (lines 33–48)
+* [`src/agent/tools.py`](../src/agent/tools.py#L20-L152)
+* [`src/agent/prompts.py`](../src/agent/prompts.py#L3-L39)
 
 ---
 
@@ -218,9 +221,9 @@ We adopted **`llama3.2:3b` hosted via Ollama** with `OLLAMA_KEEP_ALIVE=30m`.
 * **Trade-Off:** 3B models have smaller reasoning capacity than 70B models. Mitigated by strict prompt constraints and structured tool contracts.
 
 ### Code References
-* [`src/agent/graph.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/agent/graph.py#L24-L30) (lines 24–30)
-* [`docker-compose.yml`](file:///c:/Users/Utente/Projects/streaming-rag/docker-compose.yml#L53-L84) (lines 53–84)
-* [`charts/streaming-rag/templates/ollama.yaml`](file:///c:/Users/Utente/Projects/streaming-rag/charts/streaming-rag/templates/ollama.yaml)
+* [`src/agent/graph.py`](../src/agent/graph.py#L24-L30) (lines 24–30)
+* [`docker-compose.yml`](../docker-compose.yml#L53-L84) (lines 53–84)
+* [`charts/streaming-rag/templates/ollama.yaml`](../charts/streaming-rag/templates/ollama.yaml)
 
 ---
 
@@ -238,7 +241,7 @@ Building custom web frontends or proprietary REST integrations creates vendor lo
 3. **Model Context Protocol (FastMCP):** Open protocol standard (originated by Anthropic) for tool discovery, execution, and contextual grounding.
 
 ### Decision Outcome
-We implemented a dedicated **FastMCP server** ([`src/mcp_server/server.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/mcp_server/server.py)) and equipped the FastAPI agent to act as both an **MCP Provider** and an **MCP Consumer**.
+We implemented a dedicated **FastMCP server** ([`src/mcp_server/server.py`](../src/mcp_server/server.py)) and equipped the FastAPI agent to act as both an **MCP Provider** and an **MCP Consumer**.
 
 ### Decision Rationales & Trade-Offs
 * **Native IDE Integration:** Developers diagnosing production issues can query live logs directly inside Cursor or Claude Desktop without leaving their IDE.
@@ -247,8 +250,8 @@ We implemented a dedicated **FastMCP server** ([`src/mcp_server/server.py`](file
 * **Dynamic Tool Ingestion:** Setting `MCP_SERVER_URL` allows the LangGraph agent to dynamically consume external MCP tools (e.g. GitHub MCP, Prometheus MCP) at startup without modifying code.
 
 ### Code References
-* [`src/mcp_server/server.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/mcp_server/server.py#L25-L164)
-* [`src/api/main.py`](file:///c:/Users/Utente/Projects/streaming-rag/src/api/main.py#L41-L53) (lines 41–53)
+* [`src/mcp_server/server.py`](../src/mcp_server/server.py#L25-L176)
+* [`src/api/main.py`](../src/api/main.py#L41-L53) (lines 41–53)
 
 ---
 
@@ -274,7 +277,90 @@ We designed a **single multi-stage `Dockerfile`** that builds a unified image (`
 * **Minimal Image Size:** The builder stage compiles C dependencies (`librdkafka-dev`), while the runtime stage copies only clean wheels and cached weights into `python:3.11-slim`, discarding compilation toolchains.
 
 ### Code References
-* [`Dockerfile`](file:///c:/Users/Utente/Projects/streaming-rag/Dockerfile#L5-L46)
-* [`docker-compose.yml`](file:///c:/Users/Utente/Projects/streaming-rag/docker-compose.yml#L85-L162)
-* [`.github/workflows/ci.yml`](file:///c:/Users/Utente/Projects/streaming-rag/.github/workflows/ci.yml#L46-L67) (lines 46–67)
+* [`Dockerfile`](../Dockerfile#L5-L46)
+* [`docker-compose.yml`](../docker-compose.yml#L85-L165)
+* [`.github/workflows/ci.yml`](../.github/workflows/ci.yml#L46-L67) (lines 46–67)
 
+---
+
+## ADR-10: Dead Letter Queue (DLQ) and Exponential Backoff Retry Resilience
+
+### Status
+**Accepted**
+
+### Context & Problem Statement
+In a live Kafka ingestion pipeline, two distinct failure classes can occur:
+1. **Poison-Pill / Schema-Violating Payloads:** Malformed JSON or payloads missing mandatory `SystemLog` fields (`ValidationError` / `UnicodeDecodeError`).
+2. **Transient Downstream Failures:** Temporary ChromaDB HTTP timeouts or embedding worker contention during vector upsert.
+
+Previously, malformed messages were logged to `stdout` and dropped, losing forensic evidence of producer contract drift, while transient downstream errors failed without retry or dead-letter preservation.
+
+### Considered Alternatives
+1. **Drop & Log Only:** Simple, but loses failed payloads permanently and provides no automated recovery from transient vector store blips.
+2. **Infinite Consumer Blocking:** Refusing to advance offsets until every message succeeds blocks the entire partition on a single poison-pill payload.
+3. **Bounded Exponential Backoff Retries + Dedicated DLQ Topic (`system-logs-dlq`):** Retry transient processing errors with exponential backoff (`1s`, `2s`, ...), and route unparseable or persistently failing records to `system-logs-dlq` with diagnostic Kafka headers before committing the offset.
+
+### Decision Outcome
+We implemented **`publish_to_dlq()`** and **bounded exponential backoff retries** in [`src/consumer.py`](../src/consumer.py), aligned with the Java sister project's `DefaultErrorHandler` + `DeadLetterPublishingRecoverer`.
+
+### Decision Rationales & Trade-Offs
+* **Zero Poison-Pill Blocking:** Malformed payloads immediately route to `system-logs-dlq` and their offsets are committed, keeping the ingestion pipeline healthy.
+* **Forensic Traceability:** Each DLQ message preserves the original key and payload along with structured Kafka headers (`dlq_reason`, `original_topic`, `original_partition`, `original_offset`) for downstream inspection or replay.
+* **Transient Fault Tolerance:** Bounded retries (`max_retries=2`, `retry_backoff_sec=1.0`) absorb brief ChromaDB restarts without dropping valid logs.
+
+### Code References
+* [`src/consumer.py`](../src/consumer.py#L19-L98) (`publish_to_dlq`, `process_message`)
+* [`src/config.py`](../src/config.py#L11-L14) (`KAFKA_TOPIC_SYSTEM_LOGS_DLQ`)
+
+---
+
+## ADR-11: Multi-Archetype Incident Generator and Programmatic Burst API
+
+### Status
+**Accepted**
+
+### Context & Problem Statement
+Effective evaluation of an SRE ReAct agent requires realistic, domain-specific telemetry across services and log levels, as well as deterministic batch seeding for automated tests and demos. A static single-error mock generator limits root-cause diagnosis scenarios.
+
+### Considered Alternatives
+1. **Static Generic Strings:** Fast to write, but prevents meaningful semantic search differentiation across services.
+2. **External Log Replay Files Only:** Requires maintaining large static fixture files.
+3. **Multi-Archetype Domain Generator + Programmatic Burst API:** Service-specific message templates (`user-auth`, `payment-gateway`, `inventory-service`, `frontend-bff`) with weighted log levels (70% `INFO`, 20% `WARN`, 10% `ERROR`), realistic entity IDs (`usr_...`, `ord_...`, `SKU-...`, IPv4), multi-line stack traces, and `generate_and_send_burst(count)` / `--burst <count>`.
+
+### Decision Outcome
+We upgraded [`src/producer.py`](../src/producer.py) to full parity with the Java `MockLogGenerator` and `LogProducerService`.
+
+### Decision Rationales & Trade-Offs
+* **Rich Semantic Variety:** Enables realistic SRE queries across authentication failures (LDAP timeouts, JWT expiry), payment gateway faults (Stripe 502s, ledger deadlocks), inventory locking (`OptimisticLockingFailureException`), and BFF circuit-breaker trips.
+* **Automated Seeding & CI Ergonomics:** `generate_and_send_burst(count)` and `python src/producer.py --burst N` allow one-shot seeding in scripts and tests without managing infinite loops.
+
+### Code References
+* [`src/producer.py`](../src/producer.py#L15-L265)
+
+---
+
+## ADR-12: Enriched Source Citations with Normalized Similarity Scores
+
+### Status
+**Accepted**
+
+### Context & Problem Statement
+When the ReAct agent answers an incident query using `vector_search`, downstream API consumers and SREs need to know **which exact log event UUID** was cited and **how semantically close** each retrieved chunk was to the query.
+
+### Considered Alternatives
+1. **Unscored Metadata Citations:** Return only `service_name`, `log_level`, `timestamp`, and `excerpt`.
+2. **Raw L2 Distance Exposure:** Expose raw ChromaDB distance values, which are unbounded $[0, \infty)$ and counter-intuitive (lower is better).
+3. **Event ID + Normalized Confidence Score $[0, 1]$:** Store `event_id` in chunk metadata, convert vector distance $d$ via $1 / (1 + \max(0, d))$ into a bounded similarity score in $(0, 1]$, include `event_id` and `score` in tool output headers, and parse them into `LogSource`.
+
+### Decision Outcome
+We enriched [`chunk_log()`](../src/chunking.py), [`vector_search`](../src/agent/tools.py), [`mcp_server/server.py`](../src/mcp_server/server.py), [`LogSource`](../src/api/schemas.py), and [`_extract_sources()`](../src/api/routes.py) with `event_id` and normalized `score` while maintaining backward compatibility with legacy header formats.
+
+### Decision Rationales & Trade-Offs
+* **End-to-End Traceability:** Every `LogSource` citation in `QueryResponse` carries the exact `event_id` for cross-referencing against Kafka or ChromaDB.
+* **Intuitive Relevance Metric:** Normalized scores in $(0.0, 1.0]$ allow UIs and evaluation harnesses to threshold or rank citations consistently with the Java implementation.
+
+### Code References
+* [`src/chunking.py`](../src/chunking.py#L13-L27)
+* [`src/agent/tools.py`](../src/agent/tools.py#L35-L65)
+* [`src/api/schemas.py`](../src/api/schemas.py#L20-L32)
+* [`src/api/routes.py`](../src/api/routes.py#L19-L47)

@@ -17,9 +17,13 @@ from api.schemas import LogSource, QueryRequest, QueryResponse
 router = APIRouter()
 
 # Pattern to detect lines produced by the vector_search tool output.
-# Format: "[N] LEVEL | service @ timestamp\n<doc text>"
+# Supports both enriched headers ("[N] LEVEL | service @ ts | event_id=... | score=...\n<doc>")
+# and legacy headers ("[N] LEVEL | service @ ts\n<doc>").
 _SOURCE_HEADER = re.compile(
-    r"\[(\d+)\]\s+(\w+)\s+\|\s+([\w\-]+)\s+@\s+([^\n]+)\n(.*?)(?=\[\d+\]|\Z)",
+    r"\[(\d+)\]\s+(\w+)\s+\|\s+([\w\-]+)\s+@\s+([^\n|]+)"
+    r"(?:\s+\|\s+event_id=([^\s|\n]+))?"
+    r"(?:\s+\|\s+score=([0-9.]+))?"
+    r"\n(.*?)(?=\[\d+\]|\Z)",
     re.DOTALL,
 )
 
@@ -28,12 +32,16 @@ def _extract_sources(tool_outputs: list[str]) -> list[LogSource]:
     sources: list[LogSource] = []
     for output in tool_outputs:
         for m in _SOURCE_HEADER.finditer(output):
+            raw_event_id = m.group(5)
+            raw_score = m.group(6)
             sources.append(
                 LogSource(
+                    event_id=raw_event_id.strip() if raw_event_id else None,
                     log_level=m.group(2),
                     service_name=m.group(3),
                     timestamp=m.group(4).strip(),
-                    excerpt=m.group(5).strip()[:300],
+                    score=float(raw_score) if raw_score is not None else None,
+                    excerpt=m.group(7).strip()[:300],
                 )
             )
     return sources

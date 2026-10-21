@@ -13,6 +13,8 @@ def test_vector_search_with_results(monkeypatch):
     monkeypatch.setattr("agent.tools._embedder.embed", lambda query: [0.1, 0.2, 0.3])
 
     fake_results = {
+        "ids": [["evt-101", "evt-102"]],
+        "distances": [[0.15, 0.45]],
         "documents": [
             [
                 "Connection timeout to database for payment-gateway",
@@ -22,6 +24,7 @@ def test_vector_search_with_results(monkeypatch):
         "metadatas": [
             [
                 {
+                    "event_id": "evt-101",
                     "service_name": "payment-gateway",
                     "log_level": "ERROR",
                     "timestamp": "2026-10-10T12:00:00+00:00",
@@ -38,9 +41,15 @@ def test_vector_search_with_results(monkeypatch):
 
     result = vector_search.invoke({"query": "database timeout", "k": 2})
 
-    assert "[1] ERROR | payment-gateway @ 2026-10-10T12:00:00+00:00" in result
+    assert (
+        "[1] ERROR | payment-gateway @ 2026-10-10T12:00:00+00:00 | event_id=evt-101 | score=0.870"
+        in result
+    )
     assert "Connection timeout to database for payment-gateway" in result
-    assert "[2] WARN | user-auth @ 2026-10-10T12:05:00+00:00" in result
+    assert (
+        "[2] WARN | user-auth @ 2026-10-10T12:05:00+00:00 | event_id=evt-102 | score=0.690"
+        in result
+    )
 
 
 def test_vector_search_no_results(monkeypatch):

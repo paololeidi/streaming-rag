@@ -24,12 +24,14 @@ def test_mcp_get_embedder_caching(monkeypatch):
 
 
 def test_mcp_vector_search_with_results(monkeypatch):
-    """Test MCP vector_search tool formats matching log entries."""
+    """Test MCP vector_search tool formats matching log entries with event_id and score."""
     mock_emb = MagicMock()
     mock_emb.embed.return_value = [0.1, 0.2]
     monkeypatch.setattr(server, "_get_embedder", lambda: mock_emb)
 
     fake_results = {
+        "ids": [["evt-999"]],
+        "distances": [[0.25]],
         "documents": [
             [
                 "Connection reset by peer on auth-service",
@@ -38,6 +40,7 @@ def test_mcp_vector_search_with_results(monkeypatch):
         "metadatas": [
             [
                 {
+                    "event_id": "evt-999",
                     "service_name": "auth-service",
                     "log_level": "ERROR",
                     "timestamp": "2026-10-12T10:00:00+00:00",
@@ -48,7 +51,10 @@ def test_mcp_vector_search_with_results(monkeypatch):
     monkeypatch.setattr(server, "query_similar", lambda emb, k: fake_results)
 
     result = server.vector_search.fn("auth reset", k=1)
-    assert "[1] ERROR | auth-service @ 2026-10-12T10:00:00+00:00" in result
+    assert (
+        "[1] ERROR | auth-service @ 2026-10-12T10:00:00+00:00 | event_id=evt-999 | score=0.800"
+        in result
+    )
     assert "Connection reset by peer on auth-service" in result
 
 

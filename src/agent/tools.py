@@ -37,17 +37,30 @@ def vector_search(query: str, k: int = 5) -> str:
 
     documents: list[str] = results.get("documents", [[]])[0]
     metadatas: list[dict] = results.get("metadatas", [[]])[0]
+    ids_list: list[str] = (results.get("ids") or [[]])[0]
+    distances_list: list[float] = (results.get("distances") or [[]])[0]
 
     if not documents:
         return "No similar log entries found in the vector store."
 
     lines: list[str] = []
-    for i, (doc, meta) in enumerate(zip(documents, metadatas, strict=False), start=1):
+    for idx, (doc, meta) in enumerate(zip(documents, metadatas, strict=False)):
+        i = idx + 1
         service = meta.get("service_name", "unknown")
         level = meta.get("log_level", "?")
         ts = meta.get("timestamp", "?")
+        event_id = meta.get("event_id") or (ids_list[idx] if idx < len(ids_list) else None)
+        raw_dist = distances_list[idx] if idx < len(distances_list) else None
+        score = round(1.0 / (1.0 + max(0.0, float(raw_dist))), 3) if raw_dist is not None else None
+
+        header = f"[{i}] {level} | {service} @ {ts}"
+        if event_id:
+            header += f" | event_id={event_id}"
+        if score is not None:
+            header += f" | score={score:.3f}"
+
         doc_preview = doc[:400] + "..." if len(doc) > 400 else doc
-        lines.append(f"[{i}] {level} | {service} @ {ts}\n{doc_preview}")
+        lines.append(f"{header}\n{doc_preview}")
 
     return "\n\n".join(lines)
 

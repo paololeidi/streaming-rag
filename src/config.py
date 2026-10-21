@@ -10,6 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # --- Kafka ---
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
 KAFKA_TOPIC_SYSTEM_LOGS = os.getenv("KAFKA_TOPIC_SYSTEM_LOGS", "system-logs")
+KAFKA_TOPIC_SYSTEM_LOGS_DLQ = os.getenv("KAFKA_TOPIC_SYSTEM_LOGS_DLQ", "system-logs-dlq")
 KAFKA_CONSUMER_GROUP = os.getenv("KAFKA_CONSUMER_GROUP", "rag-ingestion-group")
 
 # --- ChromaDB ---

@@ -18,9 +18,17 @@ class QueryRequest(BaseModel):
 
 
 class LogSource(BaseModel):
+    event_id: str | None = Field(
+        default=None,
+        description="Unique identifier of the cited log event.",
+    )
     service_name: str
     log_level: str
     timestamp: str
+    score: float | None = Field(
+        default=None,
+        description="Vector similarity confidence score (0.0 to 1.0).",
+    )
     excerpt: str = Field(description="Relevant portion of the log document.")
 
 

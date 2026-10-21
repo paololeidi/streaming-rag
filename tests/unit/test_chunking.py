@@ -14,6 +14,7 @@ def test_chunk_log_with_explicit_event_id(sample_info_log):
     assert chunk.event_id == str(sample_info_log.event_id)
     assert chunk.text == sample_info_log.to_embedding_text()
     assert chunk.metadata == {
+        "event_id": str(sample_info_log.event_id),
         "service_name": sample_info_log.service_name,
         "log_level": sample_info_log.log_level.value,
         "timestamp": sample_info_log.timestamp,
@@ -34,6 +35,7 @@ def test_chunk_log_fallback_event_id():
     chunk = chunk_log(log, partition=3, offset=999)
 
     assert chunk.event_id == "kafka-3-999"
+    assert chunk.metadata["event_id"] == "kafka-3-999"
     assert chunk.metadata["partition"] == 3
     assert chunk.metadata["offset"] == 999
     assert chunk.metadata["service_name"] == "inventory-service"

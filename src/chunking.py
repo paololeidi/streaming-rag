@@ -17,6 +17,7 @@ def chunk_log(log: SystemLog, *, partition: int, offset: int) -> LogChunk:
         event_id=event_id,
         text=log.to_embedding_text(),
         metadata={
+            "event_id": event_id,
             "service_name": log.service_name,
             "log_level": log.log_level.value,
             "timestamp": log.timestamp,

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import langchain_mcp_adapters.client
 import pytest
 from fastapi import FastAPI
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
 from api.main import lifespan
 
@@ -35,7 +35,37 @@ def test_query_endpoint_success(client):
     assert source["service_name"] == "payment-service"
     assert source["log_level"] == "ERROR"
     assert source["timestamp"] == "2026-10-10T12:05:00"
+    assert source["event_id"] == "22222222-2222-2222-2222-222222222222"
+    assert source["score"] == 0.87
     assert "Database connection timeout" in source["excerpt"]
+
+
+def test_query_endpoint_legacy_source_header(client):
+    """Test POST /api/v1/query backward-compatibility with legacy headers without event_id/score."""
+
+    async def legacy_ainvoke(inputs, config=None):
+        return {
+            "messages": [
+                ToolMessage(
+                    content="[1] WARN | user-auth @ 2026-10-10T12:10:00\nToken refresh threshold exceeded",
+                    tool_call_id="call_legacy",
+                ),
+                AIMessage(content="User auth warned about token refresh."),
+            ]
+        }
+
+    client.app.state.agent_graph.ainvoke = AsyncMock(side_effect=legacy_ainvoke)
+
+    response = client.post("/api/v1/query", json={"prompt": "Any auth warnings?"})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data["sources"]) == 1
+    source = data["sources"][0]
+    assert source["service_name"] == "user-auth"
+    assert source["log_level"] == "WARN"
+    assert source["timestamp"] == "2026-10-10T12:10:00"
+    assert source["event_id"] is None
+    assert source["score"] is None
 
 
 def test_query_endpoint_empty_final_answer(client):

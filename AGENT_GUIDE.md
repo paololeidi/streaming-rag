@@ -15,8 +15,8 @@ When a user asks to run, test, inspect, or troubleshoot the **Streaming RAG** pr
    - Present the finished result directly to the user with live endpoints and test queries.
    - Intervene or ask further questions ONLY if hitting an external, unresolvable blocker (e.g. Docker daemon is not running, host out of memory).
 2. **Respect Long-Running vs. One-Shot Processes**:
-   - The Producer, Consumer, Kafka Broker, Ollama LLM, FastAPI server, and MCP server are **daemon/long-running services**.
-   - Always run them in detached/background mode (e.g., `docker compose up -d` or managed background tasks) so the agent turn is never blocked.
+   - The Producer (in default stream mode), Consumer, Kafka Broker, Ollama LLM, FastAPI server, and MCP server are **daemon/long-running services**. (Note: `python src/producer.py --burst 20` can also be used as a fast one-shot command to seed 20 logs immediately).
+   - Always run long-running services in detached/background mode (e.g., `docker compose up -d` or managed background tasks) so the agent turn is never blocked.
 3. **OS-Aware Execution (Windows vs. Unix)**:
    - On Windows PowerShell:
      - Activate venv with `.\.venv\Scripts\Activate.ps1` (or invoke `.\.venv\Scripts\python.exe` directly).
@@ -40,7 +40,7 @@ When a user asks to run, test, inspect, or troubleshoot the **Streaming RAG** pr
  ┌──────────────────────── Data Pipeline ─────────────────────────┐
  │                                                                │
  │  Producer ──► Kafka ──► Consumer ──► HF Embedder ──► ChromaDB  │
- │                                                                │
+ │  (stream / --burst)     │ (retries + DLQ: system-logs-dlq)     │
  └────────────────────────────────────────────┬───────────────────┘
                                               │
  ┌──────────────────────── Agentic Layer ─────▼────────────────────┐
@@ -49,7 +49,7 @@ When a user asks to run, test, inspect, or troubleshoot the **Streaming RAG** pr
  │         │                                                       │
  │         ▼                                                       │
  │  LangGraph ReAct Agent (Ollama · llama3.2:3b)                   │
- │         ├── vector_search ──► ChromaDB  (native tool)           │
+ │         ├── vector_search ──► ChromaDB  (native tool + score)   │
  │         ├── log_stats    ──► ChromaDB  (native tool)            │
  │         └── [MCP tools]  ──► MCP Server (optional, SSE)         │
  └─────────────────────────────┬───────────────────────────────────┘
@@ -66,7 +66,7 @@ When a user asks to run, test, inspect, or troubleshoot the **Streaming RAG** pr
 |---|---|---|---|
 | **FastAPI Backend** | `8000` | HTTP / SSE | REST API (`/api/v1/query`), Stream (`/api/v1/query/stream`), Swagger (`/docs`) |
 | **MCP Server** | `8001` | HTTP / SSE | Model Context Protocol SSE endpoint (`/sse`) |
-| **Kafka Broker** | `9092` | TCP (KRaft) | Log event streaming pipeline |
+| **Kafka Broker** | `9092` | TCP (KRaft) | Log event streaming pipeline (`system-logs` & `system-logs-dlq`) |
 | **Ollama Runtime** | `11434` | HTTP | Local LLM inference engine (`llama3.2:3b`) |
 | **ChromaDB** | Internal (`8000`) or Embedded | SQLite / HTTP | Vector store (`data/chroma/` in local mode) |
 
@@ -180,12 +180,14 @@ ollama pull llama3.2:3b
 ```
 
 ### Step B.4: Seed Log Data (Producer)
-Run the producer briefly to generate log events into Kafka:
+Seed a burst of logs immediately or run the continuous stream in the background:
 ```bash
-# Run in background or in a separate terminal:
+# One-shot burst of 20 synthetic logs:
+python src/producer.py --burst 20
+
+# Or run continuous stream in background / separate terminal:
 python src/producer.py
 ```
-Let it publish 10-20 logs, then stop or keep it running in a background terminal.
 
 ### Step B.5: Consume & Vectorize Logs (Consumer)
 The local consumer reads from Kafka and embeds vectors into SQLite (`data/chroma/`):
@@ -300,7 +302,7 @@ curl -X POST http://localhost:8000/api/v1/query \
 ```
 **Evaluation Check:**
 - Verify that `"answer"` contains a natural-language diagnosis.
-- Verify that `"sources"` contains citations with `service_name`, `log_level`, `timestamp`, and `excerpt`.
+- Verify that `"sources"` contains citations with `event_id`, `service_name`, `log_level`, `timestamp`, `score`, and `excerpt`.
 
 ### Test 3: Statistical Query (Aggregate Tool Call)
 Ask a question that forces the LangGraph agent to trigger the `log_stats` tool:
@@ -320,7 +322,7 @@ curl -N -X POST http://localhost:8000/api/v1/query/stream \
   -d "{\"prompt\": \"Provide a brief summary of system health based on the latest logs.\", \"k\": 3}"
 ```
 **Evaluation Check:**
-- Stream chunks must appear as `data: {"token": "..."}` and terminate with `data: [DONE]`.
+- Stream chunks must appear as `data: <token>` and terminate with `data: [DONE]`.
 
 ### Test 5: MCP Tool Discovery & Inspection
 If testing with Model Context Protocol:
@@ -352,7 +354,7 @@ mypy src
 | `pip: Access is denied` or `ERROR: To modify pip` | Windows locks running `pip.exe` during upgrade | Use `python -m pip install --upgrade pip` |
 | `Connection refused: localhost:9092` | Kafka broker is not up or still initializing KRaft | Check `docker ps`. Wait 15s for Kafka healthcheck or run `docker compose -f infrastructure/kafka/docker-compose.yml up -d` |
 | `Ollama connection error` or timeout | Ollama service not running or port 11434 blocked | Run `ollama serve` or check `docker compose logs ollama`. Verify model with `ollama list` |
-| `ChromaDB empty results` | Producer or Consumer has not run yet | Run `python src/producer.py` for ~10 seconds and `python src/consumer.py` to ingest vectors into `data/chroma/` |
+| `ChromaDB empty results` | Producer or Consumer has not run yet | Run `python src/producer.py --burst 20` and `python src/consumer.py` to ingest vectors into `data/chroma/` |
 | `Port 8000 already in use` | Another instance of Uvicorn or container running | Check active listeners (`netstat -ano \| findstr :8000` on Windows, `lsof -i :8000` on Linux) |
 | `ImportError: cannot import name ...` | `src/` not on Python path | Ensure `--app-dir src` is passed to Uvicorn or run pytest (which configures `pythonpath = src` via `pytest.ini`) |
 | `POST /api/v1/query` takes 60–90s or appears frozen | Ollama runs on CPU; model cold start loading into RAM; ReAct agent runs 2 inference passes (tool selection + synthesis); `curl -s` hides all progress | Inform user upfront of expected latency (~3.5 words/s on CPU). Recommend using the streaming endpoint (`/api/v1/query/stream` with `curl -N`), lowering `k` (e.g. 2–3), or testing via Swagger UI. |
@@ -365,4 +367,3 @@ When assisting the user with code modifications:
 1. **Preserve Data Contract**: Any changes to log fields must be updated in `src/model/models.py` (`SystemLog`) and mirrored in `docs/data-contract.md`.
 2. **Strict Test Coverage**: Any new code added to `src/` must be backed by tests in `tests/` to satisfy the `fail_under = 90` threshold in `pyproject.toml`.
 3. **Async Integrity**: The consumer and FastAPI routes rely on asyncio (`asyncio.to_thread` for blocking embedding/vector store calls). Never introduce blocking synchronous I/O in the async loops.
-
